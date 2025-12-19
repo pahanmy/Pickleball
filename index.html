@@ -28,7 +28,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo, useEffect } = React;
+        const { useState, useMemo, useEffect, useRef } = React;
         
         // Inisialisasi Firebase secara Global
         const firebaseConfig = JSON.parse(window.__firebase_config || '{}');
@@ -40,8 +40,22 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
+        // Komponen Icon yang diperbaiki untuk mengelakkan ralat 'removeChild'
         const Icon = ({ name, className = "w-5 h-5" }) => {
-            return <i data-lucide={name} className={className}></i>;
+            const iconRef = useRef(null);
+
+            useEffect(() => {
+                if (window.lucide && iconRef.current) {
+                    // Setkan semula HTML dalaman supaya React tidak keliru dengan pertukaran DOM oleh Lucide
+                    iconRef.current.innerHTML = `<i data-lucide="${name}" class="${className}"></i>`;
+                    window.lucide.createIcons({
+                        root: iconRef.current
+                    });
+                }
+            }, [name, className]);
+
+            // Gunakan span sebagai pembungkus statik yang diuruskan oleh React
+            return <span ref={iconRef} className="inline-flex items-center justify-center"></span>;
         };
 
         const App = () => {
@@ -59,10 +73,6 @@
             const [isGenerated, setIsGenerated] = useState(false);
             const [activeTab, setActiveTab] = useState('players');
             const [isSaving, setIsSaving] = useState(false);
-
-            useEffect(() => {
-                if (window.lucide) window.lucide.createIcons();
-            });
 
             // RULE 3: Auth First & Async Pattern
             useEffect(() => {
@@ -85,7 +95,7 @@
                 return () => unsubscribe();
             }, []);
 
-            // RULE 1: Fetch Sessions with proper path & guarding
+            // RULE 1: Ambil Sesi dengan laluan yang betul
             useEffect(() => {
                 if (!user) return;
                 
@@ -97,7 +107,7 @@
                 
                 const unsubscribe = sessionsRef.onSnapshot((snapshot) => {
                     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    // RULE 2: Sort in memory
+                    // RULE 2: Susun di memori
                     setSessions(data.sort((a, b) => new Date(b.date) - new Date(a.date)));
                 }, (err) => {
                     console.error("Firestore Error:", err);
@@ -106,7 +116,7 @@
                 return () => unsubscribe();
             }, [user]);
 
-            // Sync Active Session Data
+            // Segerakkan Data Sesi Aktif
             useEffect(() => {
                 if (!user || !currentSessionId) return;
                 
@@ -257,12 +267,12 @@
                 };
             }, [scores, teams, schedule, players]);
 
-            // Loading state while waiting for Auth
+            // Paparan memuatkan sementara menunggu Auth
             if (!user && sessions.length === 0) {
                 return (
                     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-400">
                         <Icon name="loader" className="w-10 h-10 animate-spin mb-4" />
-                        <p className="font-bold">Menyambung ke pangkalan data...</p>
+                        <p className="font-bold uppercase tracking-widest text-xs">Menyambung ke Pahan Database...</p>
                     </div>
                 );
             }
@@ -274,8 +284,8 @@
                             <div className="inline-flex items-center justify-center p-4 bg-lime-400 rounded-3xl mb-4 shadow-xl">
                                 <Icon name="trophy" className="w-10 h-10 text-slate-900" />
                             </div>
-                            <h1 className="text-4xl font-black tracking-tight">Pickleball Pro-Maker</h1>
-                            <p className="text-slate-500 italic mt-1 font-medium">by Pahan</p>
+                            <h1 className="text-4xl font-black tracking-tight text-slate-900">Pickleball Pro-Maker</h1>
+                            <p className="text-slate-500 italic mt-1 font-medium tracking-tight">by Pahan</p>
                         </header>
 
                         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 mb-6">
