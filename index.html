@@ -88,32 +88,32 @@
 
                     finalTeams.forEach((t, i) => tStats[i] = { name: t.name, points: 0 });
                     Object.entries(scores).forEach(([idx, data]) => {
-                        if (!data.completed) return;
+                        if (!data.confirmed) return; // Hanya kira yang sudah disahkan
                         const m = schedule[idx];
                         if (!m) return;
                         if (data.home > data.away) tStats[m.home].points += 2;
                         else if (data.away > data.home) tStats[m.away].points += 2;
                     });
                     const sortedTeams = Object.values(tStats).sort((a, b) => b.points - a.points);
-                    return sortedTeams.length ? { name: sortedTeams[0].name, isTeam: true } : null;
+                    return sortedTeams[0].points > 0 ? { name: sortedTeams[0].name, isTeam: true } : null;
                 } else {
                     schedule.forEach(m => {
                         [m.p1, m.p2, m.p3, m.p4].forEach(p => { if(!pStats[p]) pStats[p] = { points: 0 }; });
                     });
                     Object.entries(scores).forEach(([idx, data]) => {
-                        if (!data.completed) return;
+                        if (!data.confirmed) return; // Hanya kira yang sudah disahkan
                         const m = schedule[idx];
                         if (!m) return;
                         if (data.home > data.away) [m.p1, m.p2].forEach(p => pStats[p].points += 2);
                         else if (data.away > data.home) [m.p3, m.p4].forEach(p => pStats[p].points += 2);
                     });
                     const sortedPlayers = Object.entries(pStats).map(([name, s]) => ({ name, ...s })).sort((a, b) => b.points - a.points);
-                    return sortedPlayers.length ? { name: sortedPlayers[0].name, isTeam: false } : null;
+                    return sortedPlayers.length && sortedPlayers[0].points > 0 ? { name: sortedPlayers[0].name, isTeam: false } : null;
                 }
             };
 
             const winner = getWinner();
-            if (!winner) return <span className="text-[10px] text-slate-400 italic">Belum ada pemenang</span>;
+            if (!winner) return <span className="text-[10px] text-slate-400 italic">Menunggu keputusan...</span>;
 
             return (
                 <div className="flex items-center gap-1.5 mt-1">
@@ -132,6 +132,7 @@
             const [view, setView] = useState('menu');
             const [sessionDate, setSessionDate] = useState(new Date().toISOString().split('T')[0]);
             const [sessionTitle, setSessionTitle] = useState('');
+            const [sessionLocation, setSessionLocation] = useState('Paragon Pickleball Center Miri');
             const [matchFormat, setMatchFormat] = useState('team');
             
             const [startTime, setStartTime] = useState("19:00");
@@ -164,13 +165,8 @@
                 const initAuth = async () => {
                     try {
                         if (initialToken) {
-                            try {
-                                await auth.signInWithCustomToken(initialToken);
-                            } catch (e) {
-                                if (e.code === 'auth/custom-token-mismatch' || e.code === 'auth/invalid-custom-token') {
-                                    await auth.signInAnonymously();
-                                } else { throw e; }
-                            }
+                            try { await auth.signInWithCustomToken(initialToken); } 
+                            catch (e) { await auth.signInAnonymously(); }
                         } else { await auth.signInAnonymously(); }
                     } catch (error) { 
                         console.error("Auth Error:", error); 
@@ -199,6 +195,7 @@
                         const data = snapshot.data();
                         setPlayers(data.players || []);
                         setSessionTitle(data.title || 'Tiada Nama');
+                        setSessionLocation(data.location || 'Paragon Pickleball Center Miri');
                         setMatchFormat(data.matchFormat || 'team');
                         setStartTime(data.startTime || "19:00");
                         setMatchDuration(data.matchDuration || 20);
@@ -229,6 +226,7 @@
                     const sessionsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('sessions');
                     const newDoc = await sessionsRef.add({
                         title: sessionTitle || "Piala Tanpa Nama",
+                        location: sessionLocation || "Paragon Pickleball Center Miri",
                         date: sessionDate,
                         matchFormat,
                         startTime,
@@ -358,8 +356,16 @@
             };
 
             const updateScore = (matchIdx, side, value) => {
+                if (scores[matchIdx]?.confirmed) return; // Tidak boleh ubah jika sudah sah
                 const val = value === '' ? 0 : parseInt(value);
                 const newScores = { ...scores, [matchIdx]: { ...scores[matchIdx], [side]: val, completed: true } };
+                setScores(newScores);
+                syncToCloud({ scores: newScores });
+            };
+
+            const toggleConfirmScore = (matchIdx) => {
+                const currentStatus = scores[matchIdx]?.confirmed || false;
+                const newScores = { ...scores, [matchIdx]: { ...scores[matchIdx], confirmed: !currentStatus } };
                 setScores(newScores);
                 syncToCloud({ scores: newScores });
             };
@@ -373,7 +379,7 @@
                         t.members.forEach(p => pStats[p] = { points: 0, wins: 0, losses: 0 });
                     });
                     Object.entries(scores).forEach(([idx, data]) => {
-                        if (!data.completed || !schedule[idx]) return;
+                        if (!data.completed || !data.confirmed || !schedule[idx]) return; // Hanya kira jika confirmed
                         const m = schedule[idx];
                         if (data.home > data.away) {
                             tStats[m.home].points += 2; tStats[m.home].wins += 1;
@@ -384,13 +390,13 @@
                             tStats[m.away].points += 2; tStats[m.away].wins += 1;
                             tStats[m.away].members.forEach(p => { if(pStats[p]) { pStats[p].points += 2; pStats[p].wins += 1; } });
                             tStats[m.home].losses += 1;
-                            tStats[m.home].members.forEach(p => { if(pStats[p]) { pStats[p].losses += 1; } });
+                            tStats[m.home].members.forEach(p => { if(pStats[p]) pStats[p].losses += 1; });
                         }
                     });
                 } else {
                     schedule.forEach(m => { [m.p1, m.p2, m.p3, m.p4].forEach(p => { if(!pStats[p]) pStats[p] = { points: 0, wins: 0, losses: 0 }; }); });
                     Object.entries(scores).forEach(([idx, data]) => {
-                        if (!data.completed || !schedule[idx]) return;
+                        if (!data.completed || !data.confirmed || !schedule[idx]) return; // Hanya kira jika confirmed
                         const m = schedule[idx];
                         if (data.home > data.away) {
                             [m.p1, m.p2].forEach(p => { pStats[p].points += 2; pStats[p].wins += 1; });
@@ -452,6 +458,10 @@
                                     </div>
                                 </div>
                                 <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Lokasi</label>
+                                    <input type="text" value={sessionLocation} onChange={e => setSessionLocation(e.target.value)} placeholder="cth: Paragon Pickleball Center..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" />
+                                </div>
+                                <div>
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Format Perlawanan</label>
                                     <div className="grid grid-cols-2 gap-2">
                                         <button onClick={() => setMatchFormat('team')} className={`p-4 rounded-xl border-2 flex flex-col items-center gap-1 transition-all ${matchFormat === 'team' ? 'border-blue-500 bg-blue-50' : 'border-slate-100'}`}>
@@ -494,6 +504,9 @@
                                             </div>
                                             <div className="flex-1 overflow-hidden">
                                                 <div className="font-bold text-slate-800 line-clamp-1 truncate">{s.title || "Sesi Tanpa Nama"}</div>
+                                                <div className="text-[10px] text-slate-500 font-bold flex items-center gap-1.5 mb-0.5">
+                                                    <Icon name="map-pin" className="w-3 h-3 text-slate-300" /> {s.location || "Paragon Pickleball Center Miri"}
+                                                </div>
                                                 <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight flex items-center gap-2">
                                                     <span className="flex items-center gap-1"><Icon name="calendar" className="w-2.5 h-2.5" /> {new Date(s.date).toLocaleDateString('ms-MY', { month: 'short', day: 'numeric' })}</span>
                                                     <span>•</span>
@@ -534,7 +547,10 @@
                         <div className="text-right">
                             <div className="text-[10px] font-black text-slate-400 uppercase tracking-tighter italic">Format: {matchFormat === 'team' ? 'PASUKAN TETAP' : 'INDIVIDU (SCRAMBLE)'}</div>
                             <div className="font-bold text-slate-900 italic tracking-tight">{sessionTitle}</div>
-                            <p className="text-[10px] font-medium text-slate-400">
+                            <div className="text-[10px] text-slate-500 font-bold flex items-center justify-end gap-1">
+                                <Icon name="map-pin" className="w-2.5 h-2.5" /> {sessionLocation}
+                            </div>
+                            <p className="text-[10px] font-medium text-slate-400 mt-1">
                                 by <a href="https://wa.me/60135792215" target="_blank" className="hover:text-lime-600 underline decoration-dotted">Pahan</a>
                             </p>
                         </div>
@@ -628,7 +644,7 @@
 
                             <div className="grid gap-4">
                                 {schedule.map((m, idx) => (
-                                    <div key={idx} className={`p-6 bg-white rounded-3xl border-2 transition-all ${scores[idx]?.completed ? 'border-lime-100 bg-lime-50/10' : 'border-slate-100 shadow-sm'}`}>
+                                    <div key={idx} className={`p-6 bg-white rounded-3xl border-2 transition-all ${scores[idx]?.confirmed ? 'border-lime-500 bg-lime-50/10 shadow-md' : 'border-slate-100 shadow-sm'}`}>
                                         <div className="flex justify-between items-center mb-4">
                                             <div className="flex items-center gap-2">
                                                 <span className="text-[8px] font-black bg-slate-100 text-slate-400 px-2 py-1 rounded-full uppercase tracking-widest">Match #{idx+1}</span>
@@ -636,14 +652,29 @@
                                                     <Icon name="clock" className="w-3 h-3" /> {calculateTime(idx)}
                                                 </span>
                                             </div>
-                                            {scores[idx]?.completed && <span className="text-[8px] font-black text-lime-500 bg-lime-100 px-2 py-1 rounded-full uppercase">SELESAI</span>}
+                                            <div className="flex items-center gap-2">
+                                                {scores[idx]?.confirmed ? (
+                                                    <div className="flex items-center gap-1.5 bg-lime-500 text-white px-3 py-1 rounded-full text-[9px] font-black uppercase shadow-sm">
+                                                        <Icon name="lock" className="w-3 h-3" /> Markah Sah
+                                                    </div>
+                                                ) : scores[idx]?.completed ? (
+                                                    <div className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-[9px] font-black uppercase">Menunggu Pengesahan</div>
+                                                ) : null}
+                                            </div>
                                         </div>
-                                        <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-4 text-center">
+                                        <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-4 text-center mb-6">
                                             <div className="space-y-2">
                                                 <div className="font-black text-sm text-slate-800 uppercase line-clamp-2 min-h-[40px] flex items-center justify-center">
                                                     {m.isScramble ? `${m.p1} & ${m.p2}` : finalTeams[m.home]?.name}
                                                 </div>
-                                                <input type="number" value={scores[idx]?.home || ''} onChange={e => updateScore(idx, 'home', e.target.value)} placeholder="0" className="w-16 mx-auto py-2 bg-slate-50 border rounded-xl text-center font-black text-xl outline-none" />
+                                                <input 
+                                                    type="number" 
+                                                    value={scores[idx]?.home || ''} 
+                                                    disabled={scores[idx]?.confirmed}
+                                                    onChange={e => updateScore(idx, 'home', e.target.value)} 
+                                                    placeholder="0" 
+                                                    className={`w-16 mx-auto py-2 border rounded-xl text-center font-black text-xl outline-none transition-all ${scores[idx]?.confirmed ? 'bg-slate-100 text-slate-400 border-transparent' : 'bg-slate-50 focus:border-lime-400'}`} 
+                                                />
                                             </div>
                                             <div className="flex flex-col items-center">
                                                 <Icon name="swords" className="w-5 h-5 text-slate-200" />
@@ -653,8 +684,27 @@
                                                 <div className="font-black text-sm text-slate-800 uppercase line-clamp-2 min-h-[40px] flex items-center justify-center">
                                                     {m.isScramble ? `${m.p3} & ${m.p4}` : finalTeams[m.away]?.name}
                                                 </div>
-                                                <input type="number" value={scores[idx]?.away || ''} onChange={e => updateScore(idx, 'away', e.target.value)} placeholder="0" className="w-16 mx-auto py-2 bg-slate-50 border rounded-xl text-center font-black text-xl outline-none" />
+                                                <input 
+                                                    type="number" 
+                                                    value={scores[idx]?.away || ''} 
+                                                    disabled={scores[idx]?.confirmed}
+                                                    onChange={e => updateScore(idx, 'away', e.target.value)} 
+                                                    placeholder="0" 
+                                                    className={`w-16 mx-auto py-2 border rounded-xl text-center font-black text-xl outline-none transition-all ${scores[idx]?.confirmed ? 'bg-slate-100 text-slate-400 border-transparent' : 'bg-slate-50 focus:border-lime-400'}`} 
+                                                />
                                             </div>
+                                        </div>
+                                        <div className="flex justify-center border-t border-slate-50 pt-4">
+                                            <button 
+                                                onClick={() => toggleConfirmScore(idx)}
+                                                className={`flex items-center gap-2 px-6 py-2 rounded-xl text-xs font-black transition-all ${scores[idx]?.confirmed ? 'bg-slate-100 text-slate-400 hover:bg-slate-200' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-md'}`}
+                                            >
+                                                {scores[idx]?.confirmed ? (
+                                                    <><Icon name="unlock" className="w-3.5 h-3.5" /> Buka Kunci</>
+                                                ) : (
+                                                    <><Icon name="check-circle" className="w-3.5 h-3.5" /> Sahkan Markah</>
+                                                )}
+                                            </button>
                                         </div>
                                     </div>
                                 ))}
@@ -664,6 +714,14 @@
 
                     {activeTab === 'leaderboard' && (
                         <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
+                            <div className="bg-orange-50 border border-orange-100 p-4 rounded-2xl flex items-center gap-3">
+                                <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center text-orange-600">
+                                    <Icon name="info" />
+                                </div>
+                                <div className="text-xs font-bold text-orange-800">
+                                    Nota: Hanya perlawanan yang telah <span className="underline">disahkan markah</span> sahaja dikira dalam ranking.
+                                </div>
+                            </div>
                             <div className="flex justify-end">
                                 <button onClick={downloadPNG} disabled={isExporting} className="bg-lime-500 text-slate-900 px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 hover:bg-lime-400 transition-all shadow-lg shadow-lime-100">
                                     <Icon name="download" /> {isExporting ? "Menjana Imej..." : "Muat Turun Keputusan (PNG)"}
@@ -676,6 +734,9 @@
                                         <Icon name="medal" className="w-8 h-8 text-slate-900" />
                                     </div>
                                     <h2 className="text-3xl font-black text-slate-900 uppercase italic tracking-tight">{sessionTitle}</h2>
+                                    <div className="text-slate-500 font-bold flex items-center justify-center gap-2 mt-1">
+                                        <Icon name="map-pin" className="w-4 h-4 text-slate-400" /> {sessionLocation}
+                                    </div>
                                     <p className="text-slate-400 font-bold tracking-widest text-[10px] uppercase mt-1">{new Date(sessionDate).toLocaleDateString('ms-MY', { day: 'numeric', month: 'long', year: 'numeric' })} • Format {matchFormat === 'scramble' ? 'Individu (Scramble)' : 'Pasukan'}</p>
                                 </div>
 
