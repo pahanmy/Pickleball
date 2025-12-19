@@ -52,7 +52,6 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'pickleball-pro-pahan';
         const initialToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-        // Kamus Terjemahan
         const i18n = {
             bm: {
                 community: "Percuma untuk kegunaan komuniti pickleball Malaysia semua.",
@@ -183,39 +182,44 @@
                 const pStats = {};
                 const tStats = {};
 
-                if (format === 'team') {
-                    let fTeams = [];
-                    try { fTeams = typeof session.finalTeams === 'string' ? JSON.parse(session.finalTeams) : session.finalTeams; } catch(e) {}
-                    if (!fTeams || !Array.isArray(fTeams) || fTeams.length === 0) return null;
-                    fTeams.forEach((t, i) => tStats[i] = { name: t.name, points: 0 });
-                    Object.entries(scores).forEach(([idx, data]) => {
-                        if (!data.confirmed) return; 
-                        const m = schedule[idx];
-                        if (!m || tStats[m.home] === undefined || tStats[m.away] === undefined) return;
-                        if (data.home > data.away) tStats[m.home].points += 2;
-                        else if (data.away > data.home) tStats[m.away].points += 2;
-                    });
-                    const sortedTeams = Object.values(tStats).sort((a, b) => b.points - a.points);
-                    return (sortedTeams.length > 0 && sortedTeams[0].points > 0) ? { name: sortedTeams[0].name } : null;
-                } else {
-                    if (!Array.isArray(schedule)) return null;
-                    schedule.forEach(m => {
-                        if (m.p1) [m.p1, m.p2, m.p3, m.p4].forEach(p => { if(p && !pStats[p]) pStats[p] = { points: 0 }; });
-                    });
-                    Object.entries(scores).forEach(([idx, data]) => {
-                        if (!data.confirmed) return; 
-                        const m = schedule[idx];
-                        if (!m) return;
-                        if (data.home > data.away) {
-                            if (m.p1 && pStats[m.p1]) pStats[m.p1].points += 2;
-                            if (m.p2 && pStats[m.p2]) pStats[m.p2].points += 2;
-                        } else if (data.away > data.home) {
-                            if (m.p3 && pStats[m.p3]) pStats[m.p3].points += 2;
-                            if (m.p4 && pStats[m.p4]) pStats[m.p4].points += 2;
-                        }
-                    });
-                    const sortedPlayers = Object.entries(pStats).map(([name, s]) => ({ name, ...s })).sort((a, b) => b.points - a.points);
-                    return (sortedPlayers.length > 0 && sortedPlayers[0].points > 0) ? { name: sortedPlayers[0].name } : null;
+                try {
+                    if (format === 'team') {
+                        let fTeams = [];
+                        try { fTeams = typeof session.finalTeams === 'string' ? JSON.parse(session.finalTeams) : session.finalTeams; } catch(e) {}
+                        if (!fTeams || !Array.isArray(fTeams) || fTeams.length === 0) return null;
+                        fTeams.forEach((t, i) => tStats[i] = { name: t.name, points: 0 });
+                        Object.entries(scores).forEach(([idx, data]) => {
+                            if (!data.confirmed) return; 
+                            const m = schedule[idx];
+                            if (!m || tStats[m.home] === undefined || tStats[m.away] === undefined) return;
+                            if (data.home > data.away) tStats[m.home].points += 2;
+                            else if (data.away > data.home) tStats[m.away].points += 2;
+                        });
+                        const sortedTeams = Object.values(tStats).sort((a, b) => b.points - a.points);
+                        return (sortedTeams.length > 0 && sortedTeams[0].points > 0) ? { name: sortedTeams[0].name } : null;
+                    } else {
+                        if (!Array.isArray(schedule)) return null;
+                        schedule.forEach(m => {
+                            if (m.p1) [m.p1, m.p2, m.p3, m.p4].forEach(p => { if(p && !pStats[p]) pStats[p] = { points: 0 }; });
+                        });
+                        Object.entries(scores).forEach(([idx, data]) => {
+                            if (!data.confirmed) return; 
+                            const m = schedule[idx];
+                            if (!m) return;
+                            if (data.home > data.away) {
+                                if (m.p1 && pStats[m.p1]) pStats[m.p1].points += 2;
+                                if (m.p2 && pStats[m.p2]) pStats[m.p2].points += 2;
+                            } else if (data.away > data.home) {
+                                if (m.p3 && pStats[m.p3]) pStats[m.p3].points += 2;
+                                if (m.p4 && pStats[m.p4]) pStats[m.p4].points += 2;
+                            }
+                        });
+                        const sortedPlayers = Object.entries(pStats).map(([name, s]) => ({ name, ...s })).sort((a, b) => b.points - a.points);
+                        return (sortedPlayers.length > 0 && sortedPlayers[0].points > 0) ? { name: sortedPlayers[0].name } : null;
+                    }
+                } catch (err) {
+                    console.error("Winner Summary Error:", err);
+                    return null;
                 }
             };
 
@@ -269,6 +273,16 @@
             const randomizeTrophy = () => {
                 const randomName = trophyNames[Math.floor(Math.random() * trophyNames.length)];
                 setSessionTitle(randomName);
+            };
+
+            const resetSessionData = () => {
+                setPlayers([]);
+                setTeams([]);
+                setFinalTeams([]);
+                setSchedule([]);
+                setScores({});
+                setIsGenerated(false);
+                setActiveTab('players');
             };
 
             useEffect(() => {
@@ -356,6 +370,7 @@
                 });
             }, [user, currentSessionId]);
 
+            // Handler Functions
             const createNewSession = async () => {
                 if (!user) return;
                 setIsSaving(true);
@@ -384,30 +399,54 @@
                 } catch (e) { console.error(e); } finally { setIsSaving(false); }
             };
 
-            const deleteSession = async (id) => {
-                if (!user) return;
-                try {
-                    await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('sessions').doc(id).delete();
-                    setSessionToDelete(null);
-                } catch (e) { console.error("Delete Error:", e); }
+            const addIndividualPlayer = (e) => {
+                e.preventDefault();
+                if (!individualName.trim()) return;
+                const names = individualName.split(/[\n,]+/).map(n => n.trim()).filter(n => n !== "" && !players.includes(n));
+                const updatedPlayers = [...players, ...names];
+                setPlayers(updatedPlayers);
+                syncToCloud({ players: updatedPlayers });
+                setIndividualName('');
             };
 
-            const syncToCloud = async (newData) => {
-                if (!user || !currentSessionId) return;
-                try {
-                    const sessionDoc = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('sessions').doc(currentSessionId);
-                    await sessionDoc.update(newData);
-                } catch (e) { console.error("Update Error:", e); }
+            const removeIndividualPlayer = (idx) => {
+                const updatedPlayers = players.filter((_, i) => i !== idx);
+                setPlayers(updatedPlayers);
+                syncToCloud({ players: updatedPlayers });
+            };
+
+            const addManualTeam = (e) => {
+                e.preventDefault();
+                if (!manualTeamName.trim() || !manualMembers.trim()) return;
+                const membersArr = manualMembers.split(/[\n,]+/).map(n => n.trim()).filter(n => n !== "");
+                const newTeam = { name: manualTeamName.trim(), members: membersArr };
+                const updatedTeams = [...teams, newTeam];
+                setTeams(updatedTeams);
+                syncToCloud({ teams: JSON.stringify(updatedTeams) });
+                setManualTeamName('');
+                setManualMembers('');
+            };
+
+            const removeTeam = (idx) => {
+                const updatedTeams = teams.filter((_, i) => i !== idx);
+                setTeams(updatedTeams);
+                syncToCloud({ teams: JSON.stringify(updatedTeams) });
             };
 
             const calculateTime = (idx) => {
-                const [h, m] = startTime.split(':').map(Number);
-                const totalMinutes = (h * 60) + m + (Math.floor(idx / numCourts) * matchDuration);
-                const currentH = Math.floor(totalMinutes / 60) % 24;
-                const currentM = totalMinutes % 60;
-                const period = currentH >= 12 ? 'PM' : 'AM';
-                const displayH = currentH % 12 || 12;
-                return `${displayH}:${currentM.toString().padStart(2, '0')} ${period}`;
+                try {
+                    const timeStr = startTime || "19:00";
+                    if (!timeStr.includes(':')) return "--:--";
+                    const [h, m] = timeStr.split(':').map(Number);
+                    const durationVal = matchDuration || 20;
+                    const courtsVal = numCourts || 1;
+                    const totalMinutes = (h * 60) + m + (Math.floor(idx / courtsVal) * durationVal);
+                    const currentH = Math.floor(totalMinutes / 60) % 24;
+                    const currentM = totalMinutes % 60;
+                    const period = currentH >= 12 ? 'PM' : 'AM';
+                    const displayH = currentH % 12 || 12;
+                    return `${displayH}:${currentM.toString().padStart(2, '0')} ${period}`;
+                } catch(e) { return "--:--" }
             };
 
             const getFinishTime = () => {
@@ -476,65 +515,52 @@
             const stats = useMemo(() => {
                 const pStats = {};
                 const tStats = [];
-                if (matchFormat === 'team' && Array.isArray(finalTeams)) {
-                    finalTeams.forEach((t, i) => {
-                        tStats.push({ id: i, name: t.name, points: 0, wins: 0, losses: 0, members: t.members || [] });
-                        if(t.members) t.members.forEach(p => pStats[p] = { points: 0, wins: 0, losses: 0 });
-                    });
-                    Object.entries(scores).forEach(([idx, data]) => {
-                        if (!data.completed || !data.confirmed || !schedule[idx]) return; 
-                        const m = schedule[idx];
-                        if (tStats[m.home] && tStats[m.away]) {
-                            if (data.home > data.away) {
-                                tStats[m.home].points += 2; tStats[m.home].wins += 1;
-                                tStats[m.home].members.forEach(p => { if(pStats[p]) { pStats[p].points += 2; pStats[p].wins += 1; } });
-                                tStats[m.away].losses += 1;
-                                tStats[m.away].members.forEach(p => { if(pStats[p]) pStats[p].losses += 1; });
-                            } else if (data.away > data.home) {
-                                tStats[m.away].points += 2; tStats[m.away].wins += 1;
-                                tStats[m.away].members.forEach(p => { if(pStats[p]) { pStats[p].points += 2; pStats[p].wins += 1; } });
-                                tStats[m.home].losses += 1;
-                                tStats[m.home].members.forEach(p => { if(pStats[p]) { pStats[p].losses += 1; } });
+                try {
+                    if (matchFormat === 'team' && Array.isArray(finalTeams)) {
+                        finalTeams.forEach((t, i) => {
+                            tStats.push({ id: i, name: t.name, points: 0, wins: 0, losses: 0, members: t.members || [] });
+                            if(t.members) t.members.forEach(p => pStats[p] = { points: 0, wins: 0, losses: 0 });
+                        });
+                        Object.entries(scores).forEach(([idx, data]) => {
+                            if (!data.completed || !data.confirmed || !schedule[idx]) return; 
+                            const m = schedule[idx];
+                            if (tStats[m.home] && tStats[m.away]) {
+                                if (data.home > data.away) {
+                                    tStats[m.home].points += 2; tStats[m.home].wins += 1;
+                                    tStats[m.home].members.forEach(p => { if(pStats[p]) { pStats[p].points += 2; pStats[p].wins += 1; } });
+                                    tStats[m.away].losses += 1;
+                                    tStats[m.away].members.forEach(p => { if(pStats[p]) pStats[p].losses += 1; });
+                                } else if (data.away > data.home) {
+                                    tStats[m.away].points += 2; tStats[m.away].wins += 1;
+                                    tStats[m.away].members.forEach(p => { if(pStats[p]) { pStats[p].points += 2; pStats[p].wins += 1; } });
+                                    tStats[m.home].losses += 1;
+                                    tStats[m.home].members.forEach(p => { if(pStats[p]) { pStats[p].losses += 1; } });
+                                }
                             }
-                        }
-                    });
-                } else if (Array.isArray(schedule)) {
-                    schedule.forEach(m => { 
-                        if(m.isScramble) [m.p1, m.p2, m.p3, m.p4].forEach(p => { if(p && !pStats[p]) pStats[p] = { points: 0, wins: 0, losses: 0 }; }); 
-                    });
-                    Object.entries(scores).forEach(([idx, data]) => {
-                        if (!data.completed || !data.confirmed || !schedule[idx]) return; 
-                        const m = schedule[idx];
-                        if (data.home > data.away) {
-                            if(m.p1 && pStats[m.p1]) { pStats[m.p1].points += 2; pStats[m.p1].wins += 1; }
-                            if(m.p2 && pStats[m.p2]) { pStats[m.p2].points += 2; pStats[m.p2].wins += 1; }
-                            if(m.p3 && pStats[m.p3]) pStats[m.p3].losses += 1;
-                            if(m.p4 && pStats[m.p4]) pStats[m.p4].losses += 1;
-                        } else if (data.away > data.home) {
-                            if(m.p3 && pStats[m.p3]) { pStats[m.p3].points += 2; pStats[m.p3].wins += 1; }
-                            if(m.p4 && pStats[m.p4]) { pStats[m.p4].points += 2; pStats[m.p4].wins += 1; }
-                            if(m.p1 && pStats[m.p1]) pStats[m.p1].losses += 1;
-                            if(m.p2 && pStats[m.p2]) pStats[m.p2].losses += 1;
-                        }
-                    });
-                }
+                        });
+                    } else if (Array.isArray(schedule)) {
+                        schedule.forEach(m => { 
+                            if(m.isScramble) [m.p1, m.p2, m.p3, m.p4].forEach(p => { if(p && !pStats[p]) pStats[p] = { points: 0, wins: 0, losses: 0 }; }); 
+                        });
+                        Object.entries(scores).forEach(([idx, data]) => {
+                            if (!data.completed || !data.confirmed || !schedule[idx]) return; 
+                            const m = schedule[idx];
+                            if (data.home > data.away) {
+                                if(m.p1 && pStats[m.p1]) { pStats[m.p1].points += 2; pStats[m.p1].wins += 1; }
+                                if(m.p2 && pStats[m.p2]) { pStats[m.p2].points += 2; pStats[m.p2].wins += 1; }
+                                if(m.p3 && pStats[m.p3]) pStats[m.p3].losses += 1;
+                                if(m.p4 && pStats[m.p4]) pStats[m.p4].losses += 1;
+                            } else if (data.away > data.home) {
+                                if(m.p3 && pStats[m.p3]) { pStats[m.p3].points += 2; pStats[m.p3].wins += 1; }
+                                if(m.p4 && pStats[m.p4]) { pStats[m.p4].points += 2; pStats[m.p4].wins += 1; }
+                                if(m.p1 && pStats[m.p1]) pStats[m.p1].losses += 1;
+                                if(m.p2 && pStats[m.p2]) pStats[m.p2].losses += 1;
+                            }
+                        });
+                    }
+                } catch(e) { console.error("Stats Calc Error", e); }
                 return { teams: tStats.sort((a, b) => b.points - a.points), players: Object.entries(pStats).map(([name, s]) => ({ name, ...s })).sort((a, b) => b.points - a.points || a.losses - b.losses) };
             }, [scores, finalTeams, schedule, matchFormat]);
-
-            const downloadPNG = async () => {
-                const element = document.getElementById('leaderboard-export');
-                if (!element) return;
-                setIsExporting(true);
-                setTimeout(async () => {
-                    const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#ffffff' });
-                    const image = canvas.toDataURL("image/png");
-                    const link = document.createElement('a');
-                    link.download = `Keputusan-${sessionTitle}-${sessionDate}.png`;
-                    link.href = image;
-                    link.click();
-                    setIsExporting(false);
-                }, 100);
-            };
 
             if (view === 'menu') {
                 return (
@@ -605,7 +631,7 @@
                                 </div>
                             </div>
 
-                            {/* RIGHT: Stats & History */}
+                            {/* RIGHT: History */}
                             <div className="space-y-6">
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="bg-blue-600 p-5 rounded-[24px] shadow-lg shadow-blue-100 text-white relative overflow-hidden group">
@@ -654,7 +680,7 @@
                                     ) : (
                                         displayedSessions.map(s => (
                                             <div key={s.id} className="group relative">
-                                                <button onClick={() => { setCurrentSessionId(s.id); setView('active'); }} className="w-full flex items-center justify-between p-5 bg-white rounded-2xl border border-slate-100 hover:border-lime-400 hover:shadow-md transition-all">
+                                                <button onClick={() => { resetSessionData(); setCurrentSessionId(s.id); setView('active'); }} className="w-full flex items-center justify-between p-5 bg-white rounded-2xl border border-slate-100 hover:border-lime-400 hover:shadow-md transition-all">
                                                     <div className="flex items-start gap-4 text-left text-xs">
                                                         <div className="w-12 h-12 bg-slate-50 rounded-xl flex flex-col items-center justify-center font-black group-hover:bg-lime-50 transition-colors shrink-0">
                                                             <Icon name={s.matchFormat === 'team' ? 'users' : 'user'} className={`w-5 h-5 ${s.matchFormat === 'team' ? 'text-blue-400' : 'text-orange-400'}`} />
@@ -702,7 +728,7 @@
             return (
                 <div className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto pb-24 animate-in fade-in duration-300">
                     <header className="flex items-center justify-between mb-8">
-                        <button onClick={() => setView('menu')} className="flex items-center gap-2 text-slate-500 font-bold hover:text-slate-900 transition-all">
+                        <button onClick={() => { resetSessionData(); setView('menu'); }} className="flex items-center gap-2 text-slate-500 font-bold hover:text-slate-900 transition-all">
                             <Icon name="chevron-left" /> {t.mainMenu}
                         </button>
                         <div className="text-right">
@@ -871,7 +897,7 @@
                                         <thead>
                                             <tr className="text-[10px] font-black text-slate-400 uppercase border-b border-slate-100">
                                                 <th className="px-6 py-4">Pos</th>
-                                                <th className="px-6 py-4">{t.playerNamePlaceholder.replace('...', '')}</th>
+                                                <th className="px-6 py-4">{lang === 'bm' ? "Pemain" : "Player"}</th>
                                                 <th className="px-6 py-4 text-center">{t.win}</th>
                                                 <th className="px-6 py-4 text-center">{t.lost}</th>
                                                 <th className="px-6 py-4 text-center">{t.pts}</th>
@@ -881,7 +907,7 @@
                                             {stats.players && stats.players.map((p, i) => (
                                                 <tr key={i} className={`border-b border-slate-50 last:border-0 ${i === 0 ? 'bg-yellow-50/50' : ''}`}>
                                                     <td className="px-6 py-5">
-                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${i === 0 ? 'bg-yellow-400 text-white shadow-lg' : i === 1 ? 'bg-slate-200 text-slate-500' : i === 2 ? 'bg-orange-100 text-orange-600' : 'bg-slate-50 text-slate-400'}`}>
+                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${i === 0 ? 'bg-yellow-400 text-white shadow-lg shadow-yellow-200' : i === 1 ? 'bg-slate-200 text-slate-500' : i === 2 ? 'bg-orange-100 text-orange-600' : 'bg-slate-50 text-slate-400'}`}>
                                                             {i === 0 ? <Icon name="crown" className="w-4 h-4" /> : i+1}
                                                         </div>
                                                     </td>
