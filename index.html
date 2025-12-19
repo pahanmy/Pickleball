@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pickleball Pro-Maker by Pahan</title>
+    <title>myPickleball by Pahan</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -191,7 +191,7 @@
                         let fTeams = [];
                         try { fTeams = typeof session.finalTeams === 'string' ? JSON.parse(session.finalTeams) : (session.finalTeams || []); } catch(e) { fTeams = []; }
                         if (!Array.isArray(fTeams) || fTeams.length === 0) return null;
-                        fTeams.forEach((team, i) => { if(team) tStats[i] = { name: team.name || 'Team '+(i+1), points: 0 }; });
+                        fTeams.forEach((team, i) => { tStats[i] = { name: (team && team.name) ? team.name : 'Team '+(i+1), points: 0 }; });
                         Object.entries(scores).forEach(([idx, data]) => {
                             if (!data || !data.confirmed) return; 
                             const m = schedule[idx];
@@ -371,6 +371,7 @@
                 });
             }, [user, currentSessionId]);
 
+            // Logic Functions
             const syncToCloud = async (newData) => {
                 if (!user || !currentSessionId) return;
                 try {
@@ -615,24 +616,24 @@
                 return (
                     <div className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto animate-in fade-in duration-500">
                         <div className="flex justify-end gap-2 mb-4">
-                            <button onClick={() => setLang('bm')} className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${lang === 'bm' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-400'}`}>BM</button>
-                            <button onClick={() => setLang('en')} className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${lang === 'en' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-400'}`}>EN</button>
+                            <button onClick={() => setLang('bm')} className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${lang === 'bm' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-400 hover:bg-slate-100'}`}>BM</button>
+                            <button onClick={() => setLang('en')} className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${lang === 'en' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-400 hover:bg-slate-100'}`}>EN</button>
                         </div>
                         <header className="text-center mb-12">
                             <div className="inline-flex items-center justify-center p-4 bg-lime-400 rounded-3xl mb-4 shadow-xl"><Icon name="trophy" className="w-10 h-10 text-slate-900" /></div>
-                            <h1 className="text-4xl font-black tracking-tight text-slate-900">Pickleball Pro-Maker</h1>
-                            <p className="text-[11px] font-black text-lime-600 uppercase mt-2 px-4 max-w-md mx-auto">{t.community}</p>
+                            <h1 className="text-4xl font-black tracking-tight text-slate-900">myPickleball</h1>
+                            <p className="text-[11px] font-black text-lime-600 uppercase tracking-widest mt-2 px-4 max-w-md mx-auto">{t.community}</p>
                             <p className="text-slate-500 italic mt-3 font-medium tracking-tight">by <a href="https://wa.me/60135792215" target="_blank" className="hover:text-lime-600 underline decoration-dotted transition-colors">Pahan</a></p>
                         </header>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
                             <div className="bg-white p-8 rounded-[32px] shadow-sm border border-slate-200">
                                 <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-lime-600 uppercase tracking-tight italic"><Icon name="plus-circle" /> {t.newSession}</h2>
                                 <div className="space-y-5">
-                                    <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">{t.tournamentName}</label><div className="flex gap-2"><input type="text" value={sessionTitle} onChange={e => setSessionTitle(e.target.value)} placeholder="cth: Piala Merdeka..." className="flex-1 px-4 py-3 bg-slate-50 border rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" /><button onClick={randomizeTrophy} className="bg-slate-100 text-slate-400 p-3 rounded-xl hover:bg-slate-200 transition-colors"><Icon name="refresh-cw" /></button></div></div>
-                                    <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">{t.location}</label><input type="text" value={sessionLocation} onChange={e => setSessionLocation(e.target.value)} placeholder="cth: Paragon Pickleball Center..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" /></div>
+                                    <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">{t.tournamentName}</label><div className="flex gap-2"><input type="text" value={sessionTitle} onChange={e => setSessionTitle(e.target.value)} placeholder="cth: Piala Merdeka..." className="flex-1 px-4 py-3 bg-slate-50 border border-rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" /><button onClick={randomizeTrophy} className="bg-slate-100 text-slate-400 p-3 rounded-xl hover:bg-slate-200 transition-colors"><Icon name="refresh-cw" /></button></div></div>
+                                    <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">{t.location}</label><input type="text" value={sessionLocation} onChange={e => setSessionLocation(e.target.value)} placeholder="cth: Paragon Pickleball Center..." className="w-full px-4 py-3 bg-slate-50 border border-rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" /></div>
                                     <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">{t.matchFormat}</label><div className="grid grid-cols-2 gap-2"><button onClick={() => setMatchFormat('team')} className={`p-4 rounded-xl border-2 flex flex-col items-center gap-1 transition-all ${matchFormat === 'team' ? 'border-blue-500 bg-blue-50' : 'border-slate-100 bg-slate-50/50'}`}><Icon name="users" className={matchFormat === 'team' ? 'text-blue-600' : 'text-slate-300'} /><span className={`text-[10px] font-black uppercase ${matchFormat === 'team' ? 'text-blue-700' : 'text-slate-400'}`}>{t.fixedTeam}</span></button><button onClick={() => setMatchFormat('scramble')} className={`p-4 rounded-xl border-2 flex flex-col items-center gap-1 transition-all ${matchFormat === 'scramble' ? 'border-orange-500 bg-orange-50' : 'border-slate-100 bg-slate-50/50'}`}><Icon name="refresh-ccw" className={matchFormat === 'scramble' ? 'text-orange-600' : 'text-slate-300'} /><span className={`text-[10px] font-black uppercase ${matchFormat === 'scramble' ? 'text-orange-700' : 'text-slate-400'}`}>{t.scramble}</span></button></div></div>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">{t.date}</label><input type="date" value={sessionDate} onChange={e => setSessionDate(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none" /></div>
+                                        <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">{t.date}</label><input type="date" value={sessionDate} onChange={e => setSessionDate(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-rounded-xl font-bold outline-none" /></div>
                                         <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">{t.startTime}</label><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-rounded-xl font-bold outline-none" /></div>
                                     </div>
                                     <button onClick={() => createNewSession()} disabled={isSaving} className="w-full bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-lg hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 active:scale-95 tracking-tight uppercase italic mt-2">{isSaving ? "..." : t.startBtn}</button>
@@ -667,6 +668,7 @@
                         <button onClick={() => { resetSessionData(); setView('menu'); }} className="flex items-center gap-2 text-slate-500 font-bold hover:text-slate-900 transition-all"><Icon name="chevron-left" /> {t.mainMenu}</button>
                         <div className="text-right"><div className="text-[10px] font-black text-slate-400 uppercase tracking-tighter italic">Format: {matchFormat === 'team' ? t.fixedTeam : t.scramble}</div><div className="font-bold text-slate-900 italic tracking-tight">{sessionTitle}</div><div className="text-[10px] text-slate-500 font-bold flex items-center justify-end gap-1"><Icon name="map-pin" className="w-2.5 h-2.5" /> {sessionLocation}</div><p className="text-[10px] font-medium text-slate-400 mt-1">by <a href="https://wa.me/60135792215" target="_blank" className="hover:text-lime-600 underline decoration-dotted transition-colors">Pahan</a></p></div>
                     </header>
+
                     <nav className="flex bg-white p-1 rounded-xl border border-slate-200 mb-6 sticky top-4 z-10 shadow-sm overflow-x-auto">
                         {[
                             { id: 'players', label: t.registration, icon: 'users' }, 
@@ -686,8 +688,8 @@
                                     <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
                                         <h2 className="font-bold mb-4 flex items-center gap-2 text-orange-600 uppercase tracking-tight italic text-sm"><Icon name="user-plus" /> {t.fixedTeam}</h2>
                                         <form onSubmit={(e) => { e.preventDefault(); addManualTeam(e); }} className="space-y-3">
-                                            <input type="text" value={manualTeamName} onChange={e => setManualTeamName(e.target.value)} placeholder={t.teamName} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-orange-500" />
-                                            <textarea value={manualMembers} onChange={e => setManualMembers(e.target.value)} placeholder={t.members} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium h-20 outline-none focus:ring-2 focus:ring-orange-500" />
+                                            <input type="text" value={manualTeamName} onChange={e => setManualTeamName(e.target.value)} placeholder={t.teamName} className="w-full px-4 py-3 bg-slate-50 border border-rounded-xl font-bold outline-none focus:ring-2 focus:ring-orange-500" />
+                                            <textarea value={manualMembers} onChange={e => setManualMembers(e.target.value)} placeholder={t.members} className="w-full px-4 py-3 bg-slate-50 border border-rounded-xl font-medium h-20 outline-none focus:ring-2 focus:ring-orange-500" />
                                             <button className="w-full bg-orange-500 text-white py-3 rounded-xl font-bold uppercase shadow-md active:scale-95 transition-all">Tambah Pasukan</button>
                                         </form>
                                     </div>
@@ -695,7 +697,7 @@
                                 <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
                                     <h2 className="font-bold mb-4 flex items-center gap-2 text-lime-600 uppercase tracking-tight italic text-sm"><Icon name="user" /> {t.individuals} ({players.length})</h2>
                                     <form onSubmit={(e) => { e.preventDefault(); addIndividualPlayer(e); }} className="flex gap-2 mb-4">
-                                        <input type="text" value={individualName} onChange={e => setIndividualName(e.target.value)} placeholder={t.playerNamePlaceholder} className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-lime-500" />
+                                        <input type="text" value={individualName} onChange={e => setIndividualName(e.target.value)} placeholder={t.playerNamePlaceholder} className="flex-1 px-4 py-3 bg-slate-50 border border-rounded-xl outline-none focus:ring-2 focus:ring-lime-500" />
                                         <button className="bg-slate-900 text-white px-5 rounded-xl shadow-md active:scale-95 transition-all"><Icon name="plus" /></button>
                                     </form>
                                     <div className="max-h-[200px] overflow-y-auto custom-scrollbar space-y-1">
@@ -723,10 +725,10 @@
                                     </div>
                                     <h2 className="font-bold mb-4 flex items-center gap-2 text-slate-700 uppercase text-sm border-t border-slate-100 pt-4"><Icon name="clock" /> {t.timeEstimation}</h2>
                                     <div className="grid grid-cols-2 gap-4 mb-4">
-                                        <div><label className="text-[10px] font-black text-slate-400 uppercase">{t.startTime}</label><input type="time" value={startTime} onChange={e => { setStartTime(e.target.value); syncToCloud({ startTime: e.target.value }); }} className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg font-bold" /></div>
-                                        <div><label className="text-[10px] font-black text-slate-400 uppercase">{t.courts}</label><select value={numCourts} onChange={e => { setNumCourts(parseInt(e.target.value)); syncToCloud({ numCourts: parseInt(e.target.value) }); }} className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg font-bold">{[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n} {t.courts}</option>)}</select></div>
+                                        <div><label className="text-[10px] font-black text-slate-400 uppercase">{t.startTime}</label><input type="time" value={startTime} onChange={e => { setStartTime(e.target.value); syncToCloud({ startTime: e.target.value }); }} className="w-full px-3 py-2 bg-slate-50 border border-rounded-xl font-bold" /></div>
+                                        <div><label className="text-[10px] font-black text-slate-400 uppercase">{t.courts}</label><select value={numCourts} onChange={e => { setNumCourts(parseInt(e.target.value)); syncToCloud({ numCourts: parseInt(e.target.value) }); }} className="w-full px-3 py-2 bg-slate-50 border border-rounded-xl font-bold">{[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n} {t.courts}</option>)}</select></div>
                                     </div>
-                                    <div className="mb-6"><label className="text-[10px] font-black text-slate-400 uppercase">{t.duration}</label><input type="number" value={matchDuration} onChange={e => { setMatchDuration(parseInt(e.target.value)); syncToCloud({ matchDuration: parseInt(e.target.value) }); }} className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg font-bold" /></div>
+                                    <div className="mb-6"><label className="text-[10px] font-black text-slate-400 uppercase">{t.duration}</label><input type="number" value={matchDuration} onChange={e => { setMatchDuration(parseInt(e.target.value)); syncToCloud({ matchDuration: parseInt(e.target.value) }); }} className="w-full px-3 py-2 bg-slate-50 border border-rounded-xl font-bold" /></div>
                                     <button onClick={handleStartMatch} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-lg shadow-xl uppercase italic tracking-tight active:scale-95 transition-all">{t.generateBtn}</button>
                                 </div>
                             </div>
@@ -751,7 +753,7 @@
                                                 <div className="text-[10px] text-slate-500 font-bold italic line-clamp-1 leading-tight">
                                                     {m.isScramble ? `${m.p1} & ${m.p2}` : (finalTeams[m.home]?.members?.join(' & ') || '')}
                                                 </div>
-                                                <input type="number" value={scores[idx]?.home || ''} disabled={scores[idx]?.confirmed} onChange={e => updateScore(idx, 'home', e.target.value)} placeholder="0" className={`w-16 mx-auto py-2 mt-2 border rounded-xl text-center font-black text-xl outline-none transition-all ${scores[idx]?.confirmed ? 'bg-slate-100 text-slate-400 border-transparent' : 'bg-slate-50 focus:border-lime-400 shadow-inner'}`} />
+                                                <input type="number" value={scores[idx]?.home || ''} disabled={scores[idx]?.confirmed} onChange={e => updateScore(idx, 'home', e.target.value)} placeholder="0" className={`w-16 mx-auto py-2 mt-2 border border-rounded-xl text-center font-black text-xl outline-none transition-all ${scores[idx]?.confirmed ? 'bg-slate-100 text-slate-400 border-transparent' : 'bg-slate-50 focus:border-lime-400 shadow-inner'}`} />
                                             </div>
                                             <div className="flex flex-col items-center">
                                                 <Icon name="swords" className="w-6 h-6 text-slate-200" />
@@ -764,7 +766,7 @@
                                                 <div className="text-[10px] text-slate-500 font-bold italic line-clamp-1 leading-tight">
                                                     {m.isScramble ? `${m.p3} & ${m.p4}` : (finalTeams[m.away]?.members?.join(' & ') || '')}
                                                 </div>
-                                                <input type="number" value={scores[idx]?.away || ''} disabled={scores[idx]?.confirmed} onChange={e => updateScore(idx, 'away', e.target.value)} placeholder="0" className={`w-16 mx-auto py-2 mt-2 border rounded-xl text-center font-black text-xl outline-none transition-all ${scores[idx]?.confirmed ? 'bg-slate-100 text-slate-400 border-transparent' : 'bg-slate-50 focus:border-lime-400 shadow-inner'}`} />
+                                                <input type="number" value={scores[idx]?.away || ''} disabled={scores[idx]?.confirmed} onChange={e => updateScore(idx, 'away', e.target.value)} placeholder="0" className={`w-16 mx-auto py-2 mt-2 border border-rounded-xl text-center font-black text-xl outline-none transition-all ${scores[idx]?.confirmed ? 'bg-slate-100 text-slate-400 border-transparent' : 'bg-slate-50 focus:border-lime-400 shadow-inner'}`} />
                                             </div>
                                         </div>
                                         <div className="flex justify-center border-t border-slate-50 pt-4"><button onClick={() => toggleConfirmScore(idx)} className={`flex items-center gap-2 px-6 py-2 rounded-xl text-[10px] font-black transition-all ${scores[idx]?.confirmed ? 'bg-slate-100 text-slate-400 hover:bg-slate-200' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-md'}`}>{scores[idx]?.confirmed ? <><Icon name="unlock" className="w-3.5 h-3.5" /> UNLOCK</> : <><Icon name="check-circle" className="w-3.5 h-3.5" /> CONFIRM</>}</button></div>
@@ -835,7 +837,7 @@
                                 </div>
                                 <div className="text-center mt-10">
                                     <p className="text-[9px] font-black text-lime-600 uppercase tracking-widest px-4 max-w-md mx-auto mb-4">{t.community}</p>
-                                    <div className="text-[8px] font-bold text-slate-300 uppercase tracking-widest italic">Pickleball Pro-Maker by <a href="https://wa.me/60135792215" target="_blank" className="underline decoration-dotted transition-colors">Pahan</a></div>
+                                    <div className="text-[8px] font-bold text-slate-300 uppercase tracking-widest italic">myPickleball by <a href="https://wa.me/60135792215" target="_blank" className="underline decoration-dotted transition-colors">Pahan</a></div>
                                 </div>
                             </div>
                         </div>
