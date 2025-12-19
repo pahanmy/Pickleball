@@ -73,7 +73,7 @@
 
         const SessionWinnerSummary = ({ session }) => {
             const getWinner = () => {
-                if (!session.scores || !Object.keys(session.scores).length) return null;
+                if (!session || !session.scores || !Object.keys(session.scores).length) return null;
                 
                 const scores = session.scores;
                 const schedule = session.schedule || [];
@@ -82,44 +82,50 @@
                 const tStats = {};
 
                 if (format === 'team') {
-                    let finalTeams = [];
-                    try { finalTeams = typeof session.finalTeams === 'string' ? JSON.parse(session.finalTeams) : session.finalTeams; } catch(e) {}
-                    if (!finalTeams || !finalTeams.length) return null;
+                    let fTeams = [];
+                    try { fTeams = typeof session.finalTeams === 'string' ? JSON.parse(session.finalTeams) : session.finalTeams; } catch(e) {}
+                    if (!fTeams || !Array.isArray(fTeams) || fTeams.length === 0) return null;
 
-                    finalTeams.forEach((t, i) => tStats[i] = { name: t.name, points: 0 });
+                    fTeams.forEach((t, i) => tStats[i] = { name: t.name, points: 0 });
                     Object.entries(scores).forEach(([idx, data]) => {
                         if (!data.confirmed) return; 
                         const m = schedule[idx];
-                        if (!m) return;
+                        if (!m || tStats[m.home] === undefined || tStats[m.away] === undefined) return;
                         if (data.home > data.away) tStats[m.home].points += 2;
                         else if (data.away > data.home) tStats[m.away].points += 2;
                     });
                     const sortedTeams = Object.values(tStats).sort((a, b) => b.points - a.points);
-                    return sortedTeams[0].points > 0 ? { name: sortedTeams[0].name, isTeam: true } : null;
+                    return (sortedTeams.length > 0 && sortedTeams[0].points > 0) ? { name: sortedTeams[0].name, isTeam: true } : null;
                 } else {
+                    if (!Array.isArray(schedule)) return null;
                     schedule.forEach(m => {
-                        [m.p1, m.p2, m.p3, m.p4].forEach(p => { if(!pStats[p]) pStats[p] = { points: 0 }; });
+                        if (m.p1) [m.p1, m.p2, m.p3, m.p4].forEach(p => { if(p && !pStats[p]) pStats[p] = { points: 0 }; });
                     });
                     Object.entries(scores).forEach(([idx, data]) => {
                         if (!data.confirmed) return; 
                         const m = schedule[idx];
                         if (!m) return;
-                        if (data.home > data.away) [m.p1, m.p2].forEach(p => pStats[p].points += 2);
-                        else if (data.away > data.home) [m.p3, m.p4].forEach(p => pStats[p].points += 2);
+                        if (data.home > data.away) {
+                            if (m.p1 && pStats[m.p1]) pStats[m.p1].points += 2;
+                            if (m.p2 && pStats[m.p2]) pStats[m.p2].points += 2;
+                        } else if (data.away > data.home) {
+                            if (m.p3 && pStats[m.p3]) pStats[m.p3].points += 2;
+                            if (m.p4 && pStats[m.p4]) pStats[m.p4].points += 2;
+                        }
                     });
                     const sortedPlayers = Object.entries(pStats).map(([name, s]) => ({ name, ...s })).sort((a, b) => b.points - a.points);
-                    return sortedPlayers.length && sortedPlayers[0].points > 0 ? { name: sortedPlayers[0].name, isTeam: false } : null;
+                    return (sortedPlayers.length > 0 && sortedPlayers[0].points > 0) ? { name: sortedPlayers[0].name, isTeam: false } : null;
                 }
             };
 
             const winner = getWinner();
-            if (!winner) return <span className="text-[10px] text-slate-400 italic">Menunggu keputusan...</span>;
+            if (!winner) return <span className="text-[10px] text-slate-400 italic">Waiting for results / Menunggu keputusan...</span>;
 
             return (
                 <div className="flex items-center gap-1.5 mt-1">
                     <span className="text-yellow-500"><Icon name="crown" className="w-3.5 h-3.5" /></span>
                     <span className="text-[11px] font-black text-slate-700 uppercase tracking-tight truncate max-w-[150px]">
-                        Juara: {winner.name}
+                        Winner / Juara: {winner.name}
                     </span>
                 </div>
             );
@@ -135,7 +141,6 @@
             const [sessionLocation, setSessionLocation] = useState('Paragon Pickleball Center Miri');
             const [matchFormat, setMatchFormat] = useState('team');
             
-            // State for filtering
             const [historyFilterDate, setHistoryFilterDate] = useState('');
 
             const [startTime, setStartTime] = useState("19:00");
@@ -190,13 +195,32 @@
                 });
             }, [user]);
 
-            // Logic to filter sessions for the history list
+            const globalStats = useMemo(() => {
+                let totalMatches = 0;
+                const uniquePlayers = new Set();
+                sessions.forEach(s => {
+                    if (s.schedule && Array.isArray(s.schedule)) totalMatches += s.schedule.length;
+                    if (s.players && Array.isArray(s.players)) {
+                        s.players.forEach(p => uniquePlayers.add(p.trim().toLowerCase()));
+                    }
+                    let teamsArr = [];
+                    try { teamsArr = typeof s.teams === 'string' ? JSON.parse(s.teams) : (s.teams || []); } catch(e) {}
+                    if (Array.isArray(teamsArr)) {
+                        teamsArr.forEach(t => {
+                            if (t.members && Array.isArray(t.members)) {
+                                t.members.forEach(m => uniquePlayers.add(m.trim().toLowerCase()));
+                            }
+                        });
+                    }
+                });
+                return { totalMatches, totalPlayers: uniquePlayers.size };
+            }, [sessions]);
+
             const displayedSessions = useMemo(() => {
                 let list = [...sessions];
                 if (historyFilterDate) {
                     return list.filter(s => s.date === historyFilterDate);
                 }
-                // Show 10 latest if no date filter is applied
                 return list.slice(0, 10);
             }, [sessions, historyFilterDate]);
 
@@ -207,7 +231,7 @@
                     if (snapshot.exists) {
                         const data = snapshot.data();
                         setPlayers(data.players || []);
-                        setSessionTitle(data.title || 'Tiada Nama');
+                        setSessionTitle(data.title || 'No Name');
                         setSessionLocation(data.location || 'Paragon Pickleball Center Miri');
                         setMatchFormat(data.matchFormat || 'team');
                         setStartTime(data.startTime || "19:00");
@@ -238,7 +262,7 @@
                 try {
                     const sessionsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('sessions');
                     const newDoc = await sessionsRef.add({
-                        title: sessionTitle || "Piala Tanpa Nama",
+                        title: sessionTitle || "Unnamed Session",
                         location: sessionLocation || "Paragon Pickleball Center Miri",
                         date: sessionDate,
                         matchFormat,
@@ -287,7 +311,7 @@
             };
 
             const getFinishTime = () => {
-                if (schedule.length === 0) return "--";
+                if (!schedule || schedule.length === 0) return "--";
                 return calculateTime(schedule.length);
             };
 
@@ -337,7 +361,7 @@
                             finalTeamsList.push({ name: `Mix Team ${Math.floor(i/playersPerTeam) + 1}`, members });
                         }
                     }
-                    if (finalTeamsList.length < 2) return alert("Perlukan sekurang-kurangnya 2 pasukan.");
+                    if (finalTeamsList.length < 2) return alert("Min. 2 teams required / Perlukan sekurang-kurangnya 2 pasukan.");
                     for (let i = 0; i < finalTeamsList.length; i++) {
                         for (let j = i + 1; j < finalTeamsList.length; j++) {
                             finalSchedule.push({ home: i, away: j });
@@ -345,9 +369,9 @@
                     }
                 } else {
                     let allPlayers = [...players];
-                    teams.forEach(t => allPlayers.push(...t.members));
+                    teams.forEach(t => { if(t.members) allPlayers.push(...t.members); });
                     allPlayers = [...new Set(allPlayers)];
-                    if (allPlayers.length < 4) return alert("Perlukan sekurang-kurangnya 4 pemain untuk Scramble.");
+                    if (allPlayers.length < 4) return alert("Min. 4 players required / Perlukan sekurang-kurangnya 4 pemain.");
                     const rounds = Math.min(allPlayers.length - 1, 6);
                     for (let r = 0; r < rounds; r++) {
                         const shuffled = [...allPlayers].sort(() => Math.random() - 0.5);
@@ -386,63 +410,56 @@
             const stats = useMemo(() => {
                 const pStats = {};
                 const tStats = [];
-                if (matchFormat === 'team') {
+                if (matchFormat === 'team' && Array.isArray(finalTeams)) {
                     finalTeams.forEach((t, i) => {
-                        tStats.push({ id: i, name: t.name, points: 0, wins: 0, losses: 0, members: t.members });
-                        t.members.forEach(p => pStats[p] = { points: 0, wins: 0, losses: 0 });
+                        tStats.push({ id: i, name: t.name, points: 0, wins: 0, losses: 0, members: t.members || [] });
+                        if(t.members) t.members.forEach(p => pStats[p] = { points: 0, wins: 0, losses: 0 });
                     });
                     Object.entries(scores).forEach(([idx, data]) => {
                         if (!data.completed || !data.confirmed || !schedule[idx]) return; 
                         const m = schedule[idx];
-                        if (data.home > data.away) {
-                            tStats[m.home].points += 2; tStats[m.home].wins += 1;
-                            tStats[m.home].members.forEach(p => { if(pStats[p]) { pStats[p].points += 2; pStats[p].wins += 1; } });
-                            tStats[m.away].losses += 1;
-                            tStats[m.away].members.forEach(p => { if(pStats[p]) pStats[p].losses += 1; });
-                        } else if (data.away > data.home) {
-                            tStats[m.away].points += 2; tStats[m.away].wins += 1;
-                            tStats[m.away].members.forEach(p => { if(pStats[p]) { pStats[p].points += 2; pStats[p].wins += 1; } });
-                            tStats[m.home].losses += 1;
-                            tStats[m.home].members.forEach(p => { if(pStats[p]) { pStats[p].losses += 1; } });
+                        if (tStats[m.home] && tStats[m.away]) {
+                            if (data.home > data.away) {
+                                tStats[m.home].points += 2; tStats[m.home].wins += 1;
+                                tStats[m.home].members.forEach(p => { if(pStats[p]) { pStats[p].points += 2; pStats[p].wins += 1; } });
+                                tStats[m.away].losses += 1;
+                                tStats[m.away].members.forEach(p => { if(pStats[p]) pStats[p].losses += 1; });
+                            } else if (data.away > data.home) {
+                                tStats[m.away].points += 2; tStats[m.away].wins += 1;
+                                tStats[m.away].members.forEach(p => { if(pStats[p]) { pStats[p].points += 2; pStats[p].wins += 1; } });
+                                tStats[m.home].losses += 1;
+                                tStats[m.home].members.forEach(p => { if(pStats[p]) { pStats[p].losses += 1; } });
+                            }
                         }
                     });
-                } else {
-                    schedule.forEach(m => { [m.p1, m.p2, m.p3, m.p4].forEach(p => { if(!pStats[p]) pStats[p] = { points: 0, wins: 0, losses: 0 }; }); });
+                } else if (Array.isArray(schedule)) {
+                    schedule.forEach(m => { 
+                        if(m.isScramble) [m.p1, m.p2, m.p3, m.p4].forEach(p => { if(p && !pStats[p]) pStats[p] = { points: 0, wins: 0, losses: 0 }; }); 
+                    });
                     Object.entries(scores).forEach(([idx, data]) => {
                         if (!data.completed || !data.confirmed || !schedule[idx]) return; 
                         const m = schedule[idx];
                         if (data.home > data.away) {
-                            [m.p1, m.p2].forEach(p => { pStats[p].points += 2; pStats[p].wins += 1; });
-                            [m.p3, m.p4].forEach(p => { pStats[p].losses += 1; });
+                            if(m.p1 && pStats[m.p1]) { pStats[m.p1].points += 2; pStats[m.p1].wins += 1; }
+                            if(m.p2 && pStats[m.p2]) { pStats[m.p2].points += 2; pStats[m.p2].wins += 1; }
+                            if(m.p3 && pStats[m.p3]) pStats[m.p3].losses += 1;
+                            if(m.p4 && pStats[m.p4]) pStats[m.p4].losses += 1;
                         } else if (data.away > data.home) {
-                            [m.p3, m.p4].forEach(p => { pStats[p].points += 2; pStats[p].wins += 1; });
-                            [m.p1, m.p2].forEach(p => { pStats[p].losses += 1; });
+                            if(m.p3 && pStats[m.p3]) { pStats[m.p3].points += 2; pStats[m.p3].wins += 1; }
+                            if(m.p4 && pStats[m.p4]) { pStats[m.p4].points += 2; pStats[m.p4].wins += 1; }
+                            if(m.p1 && pStats[m.p1]) pStats[m.p1].losses += 1;
+                            if(m.p2 && pStats[m.p2]) pStats[m.p2].losses += 1;
                         }
                     });
                 }
                 return { teams: tStats.sort((a, b) => b.points - a.points), players: Object.entries(pStats).map(([name, s]) => ({ name, ...s })).sort((a, b) => b.points - a.points || a.losses - b.losses) };
             }, [scores, finalTeams, schedule, matchFormat]);
 
-            const downloadPNG = async () => {
-                const element = document.getElementById('leaderboard-export');
-                if (!element) return;
-                setIsExporting(true);
-                setTimeout(async () => {
-                    const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#ffffff' });
-                    const image = canvas.toDataURL("image/png");
-                    const link = document.createElement('a');
-                    link.download = `Keputusan-${sessionTitle}-${sessionDate}.png`;
-                    link.href = image;
-                    link.click();
-                    setIsExporting(false);
-                }, 100);
-            };
-
             if (!user && sessions.length === 0) {
                 return (
                     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-400">
                         <Icon name="loader" className="w-10 h-10 animate-spin mb-4" />
-                        <p className="font-bold uppercase tracking-widest text-xs text-center">Menyambung ke Pahan Database...</p>
+                        <p className="font-bold uppercase tracking-widest text-xs text-center">Connecting to Database / Menyambung ke Database...</p>
                     </div>
                 );
             }
@@ -455,71 +472,97 @@
                                 <Icon name="trophy" className="w-10 h-10 text-slate-900" />
                             </div>
                             <h1 className="text-4xl font-black tracking-tight text-slate-900">Pickleball Pro-Maker</h1>
-                            <p className="text-slate-500 italic mt-1 font-medium tracking-tight">
+                            <p className="text-[11px] font-black text-lime-600 uppercase tracking-widest mt-2 px-4 max-w-md mx-auto">
+                                Free for all Malaysian Pickleball Community / Percuma untuk kegunaan komuniti pickleball Malaysia semua.
+                            </p>
+                            <p className="text-slate-500 italic mt-3 font-medium tracking-tight">
                                 by <a href="https://wa.me/60135792215" target="_blank" className="hover:text-lime-600 underline decoration-dotted transition-colors">Pahan</a>
                             </p>
                         </header>
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
-                            {/* KIRI: Sesi Baru */}
+                            {/* LEFT: New Session / Sesi Baru */}
                             <div className="bg-white p-8 rounded-[32px] shadow-sm border border-slate-200">
                                 <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-lime-600 uppercase tracking-tight italic">
-                                    <Icon name="plus-circle" /> Bina Sesi Baru
+                                    <Icon name="plus-circle" /> New Session / Sesi Baru
                                 </h2>
                                 <div className="space-y-5">
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Nama Kejohanan</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Tournament Name / Nama Kejohanan</label>
                                         <div className="flex gap-2">
-                                            <input type="text" value={sessionTitle} onChange={e => setSessionTitle(e.target.value)} placeholder="cth: Piala Merdeka..." className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" />
-                                            <button onClick={randomizeTrophy} className="bg-slate-100 text-slate-500 p-3 rounded-xl hover:bg-slate-200 transition-colors"><Icon name="refresh-cw" /></button>
+                                            <input type="text" value={sessionTitle} onChange={e => setSessionTitle(e.target.value)} placeholder="e.g. Merdeka Cup..." className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" />
+                                            <button onClick={randomizeTrophy} className="bg-slate-100 text-slate-400 p-3 rounded-xl hover:bg-slate-200 transition-colors"><Icon name="refresh-cw" /></button>
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Lokasi</label>
-                                        <input type="text" value={sessionLocation} onChange={e => setSessionLocation(e.target.value)} placeholder="cth: Paragon Pickleball Center..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" />
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Location / Lokasi</label>
+                                        <input type="text" value={sessionLocation} onChange={e => setSessionLocation(e.target.value)} placeholder="e.g. Paragon Pickleball Center..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Format Perlawanan</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Match Format / Format Perlawanan</label>
                                         <div className="grid grid-cols-2 gap-2">
                                             <button onClick={() => setMatchFormat('team')} className={`p-4 rounded-xl border-2 flex flex-col items-center gap-1 transition-all ${matchFormat === 'team' ? 'border-blue-500 bg-blue-50' : 'border-slate-100 bg-slate-50/50'}`}>
                                                 <Icon name="users" className={matchFormat === 'team' ? 'text-blue-600' : 'text-slate-300'} />
-                                                <span className={`text-[10px] font-black uppercase ${matchFormat === 'team' ? 'text-blue-700' : 'text-slate-400'}`}>Pasukan (Official)</span>
+                                                <span className={`text-[10px] font-black uppercase ${matchFormat === 'team' ? 'text-blue-700' : 'text-slate-400'}`}>Fixed Teams / Pasukan</span>
                                             </button>
                                             <button onClick={() => setMatchFormat('scramble')} className={`p-4 rounded-xl border-2 flex flex-col items-center gap-1 transition-all ${matchFormat === 'scramble' ? 'border-orange-500 bg-orange-50' : 'border-slate-100 bg-slate-50/50'}`}>
                                                 <Icon name="refresh-ccw" className={matchFormat === 'scramble' ? 'text-orange-600' : 'text-slate-300'} />
-                                                <span className={`text-[10px] font-black uppercase ${matchFormat === 'scramble' ? 'text-orange-700' : 'text-slate-400'}`}>Individu (Scramble)</span>
+                                                <span className={`text-[10px] font-black uppercase ${matchFormat === 'scramble' ? 'text-orange-700' : 'text-slate-400'}`}>Scramble / Individu</span>
                                             </button>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Tarikh</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Date / Tarikh</label>
                                             <input type="date" value={sessionDate} onChange={e => setSessionDate(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none" />
                                         </div>
                                         <div>
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Masa Mula</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Start Time / Masa Mula</label>
                                             <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none" />
                                         </div>
                                     </div>
                                     <button onClick={createNewSession} disabled={isSaving} className="w-full bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-lg hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 active:scale-95 tracking-tight uppercase italic mt-2">
-                                        {isSaving ? "Sedang Bina..." : "Mula Sesi Sekarang"}
+                                        {isSaving ? "Creating..." : "Start Session / Mula Sesi"}
                                     </button>
                                 </div>
                             </div>
 
-                            {/* KANAN: Rekod Sesi Terdahulu */}
+                            {/* RIGHT: Stats & Previous Sessions / Rekod */}
                             <div className="space-y-6">
-                                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 px-2">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-blue-600 p-5 rounded-[24px] shadow-lg shadow-blue-100 text-white relative overflow-hidden group">
+                                        <div className="relative z-10">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Icon name="swords" className="w-4 h-4 text-blue-200" />
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-blue-200">Matches / Perlawanan</span>
+                                            </div>
+                                            <div className="text-3xl font-black italic tracking-tighter">{globalStats.totalMatches}</div>
+                                        </div>
+                                        <Icon name="activity" className="absolute -bottom-2 -right-2 w-16 h-16 text-blue-500 opacity-30 group-hover:scale-110 transition-transform" />
+                                    </div>
+                                    <div className="bg-lime-500 p-5 rounded-[24px] shadow-lg shadow-lime-100 text-slate-900 relative overflow-hidden group">
+                                        <div className="relative z-10">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Icon name="users" className="w-4 h-4 text-lime-800/50" />
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-lime-800/50">Players / Pemain</span>
+                                            </div>
+                                            <div className="text-3xl font-black italic tracking-tighter">{globalStats.totalPlayers}</div>
+                                        </div>
+                                        <Icon name="users-round" className="absolute -bottom-2 -right-2 w-16 h-16 text-lime-600 opacity-20 group-hover:scale-110 transition-transform" />
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 px-2 mt-4">
                                     <div>
                                         <h2 className="text-xl font-black flex items-center gap-2 text-slate-800 uppercase tracking-tight italic">
-                                            <Icon name="history" /> Rekod Sesi {historyFilterDate ? '' : '(10 Terkini)'}
+                                            <Icon name="history" /> History / Rekod Sesi
                                         </h2>
                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                            {historyFilterDate ? `Keputusan pada ${new Date(historyFilterDate).toLocaleDateString('ms-MY')}` : 'Memaparkan perlawanan paling baru'}
+                                            {historyFilterDate ? `Showing date / Tarikh: ${new Date(historyFilterDate).toLocaleDateString('ms-MY')}` : 'Showing 10 latest / 10 Terkini'}
                                         </p>
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Carian Tarikh</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Filter Date / Carian Tarikh</label>
                                         <div className="flex gap-1">
                                             <input 
                                                 type="date" 
@@ -536,30 +579,30 @@
                                     </div>
                                 </div>
 
-                                <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                                <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
                                     {displayedSessions.length === 0 ? (
                                         <div className="text-center py-20 bg-white rounded-[32px] border border-dashed border-slate-200">
                                             <Icon name="search-x" className="w-10 h-10 text-slate-200 mx-auto mb-2" />
-                                            <p className="text-sm font-bold text-slate-400 italic">Tiada rekod ditemui</p>
+                                            <p className="text-sm font-bold text-slate-400 italic">No records found / Tiada rekod ditemui</p>
                                         </div>
                                     ) : (
                                         displayedSessions.map(s => (
                                             <div key={s.id} className="group relative">
                                                 <button onClick={() => { setCurrentSessionId(s.id); setView('active'); }} className="w-full flex items-center justify-between p-5 bg-white rounded-2xl border border-slate-100 hover:border-lime-400 hover:shadow-md transition-all">
-                                                    <div className="flex items-start gap-4 text-left">
+                                                    <div className="flex items-start gap-4 text-left text-xs">
                                                         <div className="w-12 h-12 bg-slate-50 rounded-xl flex flex-col items-center justify-center font-black group-hover:bg-lime-50 transition-colors shrink-0">
                                                             <Icon name={s.matchFormat === 'team' ? 'users' : 'user'} className={`w-5 h-5 ${s.matchFormat === 'team' ? 'text-blue-400' : 'text-orange-400'}`} />
                                                             <span className="text-[8px] mt-0.5 text-slate-400 font-bold uppercase tracking-tighter">{s.matchFormat === 'team' ? 'Team' : 'Scrmb'}</span>
                                                         </div>
                                                         <div className="flex-1 overflow-hidden">
-                                                            <div className="font-bold text-slate-800 line-clamp-1 truncate">{s.title || "Sesi Tanpa Nama"}</div>
+                                                            <div className="font-bold text-slate-800 line-clamp-1 truncate">{s.title || "No Name"}</div>
                                                             <div className="text-[10px] text-slate-500 font-bold flex items-center gap-1.5 mb-0.5">
                                                                 <Icon name="map-pin" className="w-3 h-3 text-slate-300" /> {s.location || "Paragon Pickleball Center Miri"}
                                                             </div>
                                                             <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight flex items-center gap-2">
                                                                 <span className="flex items-center gap-1"><Icon name="calendar" className="w-2.5 h-2.5" /> {new Date(s.date).toLocaleDateString('ms-MY', { month: 'short', day: 'numeric' })}</span>
                                                                 <span>•</span>
-                                                                <span>{s.isGenerated ? "Selesai" : "Draf"}</span>
+                                                                <span>{s.isGenerated ? "Final / Selesai" : "Draft / Draf"}</span>
                                                             </div>
                                                             <SessionWinnerSummary session={s} />
                                                         </div>
@@ -579,10 +622,10 @@
                         {sessionToDelete && (
                             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                                 <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl">
-                                    <h3 className="text-xl font-black text-slate-900 mb-2">Padam Sesi?</h3>
+                                    <h3 className="text-xl font-black text-slate-900 mb-2">Delete Session? / Padam Sesi?</h3>
                                     <div className="flex gap-3">
-                                        <button onClick={() => setSessionToDelete(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Batal</button>
-                                        <button onClick={() => deleteSession(sessionToDelete)} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold">Padam</button>
+                                        <button onClick={() => setSessionToDelete(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Cancel / Batal</button>
+                                        <button onClick={() => deleteSession(sessionToDelete)} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold">Delete / Padam</button>
                                     </div>
                                 </div>
                             </div>
@@ -595,10 +638,10 @@
                 <div className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto pb-24 animate-in fade-in duration-300">
                     <header className="flex items-center justify-between mb-8">
                         <button onClick={() => setView('menu')} className="flex items-center gap-2 text-slate-500 font-bold hover:text-slate-900 transition-all">
-                            <Icon name="chevron-left" /> Menu Utama
+                            <Icon name="chevron-left" /> Menu / Utama
                         </button>
                         <div className="text-right">
-                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-tighter italic">Format: {matchFormat === 'team' ? 'PASUKAN TETAP' : 'INDIVIDU (SCRAMBLE)'}</div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-tighter italic">Format: {matchFormat === 'team' ? 'TEAM / PASUKAN' : 'SCRAMBLE / INDIVIDU'}</div>
                             <div className="font-bold text-slate-900 italic tracking-tight">{sessionTitle}</div>
                             <div className="text-[10px] text-slate-500 font-bold flex items-center justify-end gap-1">
                                 <Icon name="map-pin" className="w-2.5 h-2.5" /> {sessionLocation}
@@ -610,8 +653,12 @@
                     </header>
 
                     <nav className="flex bg-white p-1 rounded-xl border border-slate-200 mb-6 sticky top-4 z-10 shadow-sm overflow-x-auto">
-                        {[{ id: 'players', label: 'Pendaftaran', icon: 'users' }, { id: 'schedule', label: 'Jadual', icon: 'calendar' }, { id: 'leaderboard', label: 'Kedudukan', icon: 'medal' }].map(tab => (
-                            <button key={tab.id} onClick={() => isGenerated || tab.id === 'players' ? setActiveTab(tab.id) : null} className={`flex-1 min-w-[100px] flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold capitalize transition-all ${activeTab === tab.id ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'} ${!isGenerated && tab.id !== 'players' ? 'opacity-30 cursor-not-allowed' : ''}`}>
+                        {[
+                            { id: 'players', label: 'Registration / Daftar', icon: 'users' }, 
+                            { id: 'schedule', label: 'Schedule / Jadual', icon: 'calendar' }, 
+                            { id: 'leaderboard', label: 'Leaderboard / Kedudukan', icon: 'medal' }
+                        ].map(tab => (
+                            <button key={tab.id} onClick={() => isGenerated || tab.id === 'players' ? setActiveTab(tab.id) : null} className={`flex-1 min-w-[140px] flex items-center justify-center gap-2 py-3 rounded-lg text-[11px] font-black uppercase transition-all ${activeTab === tab.id ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'} ${!isGenerated && tab.id !== 'players' ? 'opacity-30 cursor-not-allowed' : ''}`}>
                                 <Icon name={tab.icon} className="w-4 h-4" /> {tab.label}
                             </button>
                         ))}
@@ -622,18 +669,18 @@
                             <div className="space-y-6">
                                 {matchFormat === 'team' && (
                                     <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                                        <h2 className="font-bold mb-4 flex items-center gap-2 text-orange-600 uppercase tracking-tight italic text-sm"><Icon name="user-plus" /> Daftar Pasukan Tetap</h2>
+                                        <h2 className="font-bold mb-4 flex items-center gap-2 text-orange-600 uppercase tracking-tight italic text-sm"><Icon name="user-plus" /> Fixed Teams / Pasukan Tetap</h2>
                                         <form onSubmit={addManualTeam} className="space-y-3">
-                                            <input type="text" value={manualTeamName} onChange={e => setManualTeamName(e.target.value)} placeholder="Nama Pasukan" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 font-bold outline-none" />
-                                            <textarea value={manualMembers} onChange={e => setManualMembers(e.target.value)} placeholder="Nama Ahli (asingkan dengan koma)" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 font-medium h-20 outline-none" />
-                                            <button className="w-full bg-orange-500 text-white py-3 rounded-xl font-bold">Tambah Pasukan</button>
+                                            <input type="text" value={manualTeamName} onChange={e => setManualTeamName(e.target.value)} placeholder="Team Name / Nama Pasukan" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none" />
+                                            <textarea value={manualMembers} onChange={e => setManualMembers(e.target.value)} placeholder="Members (separate with comma) / Ahli (asingkan dengan koma)" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium h-20 outline-none" />
+                                            <button className="w-full bg-orange-500 text-white py-3 rounded-xl font-bold uppercase tracking-tight italic">Add Team / Tambah Pasukan</button>
                                         </form>
                                     </div>
                                 )}
                                 <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                                    <h2 className="font-bold mb-4 flex items-center gap-2 text-lime-600 uppercase tracking-tight italic text-sm"><Icon name="user" /> Daftar Pemain Individu ({players.length})</h2>
+                                    <h2 className="font-bold mb-4 flex items-center gap-2 text-lime-600 uppercase tracking-tight italic text-sm"><Icon name="user" /> Individuals / Daftar Pemain ({players.length})</h2>
                                     <form onSubmit={addIndividualPlayer} className="flex gap-2 mb-4">
-                                        <input type="text" value={individualName} onChange={e => setIndividualName(e.target.value)} placeholder="Nama pemain..." className="flex-1 px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 outline-none" />
+                                        <input type="text" value={individualName} onChange={e => setIndividualName(e.target.value)} placeholder="Player name / Nama pemain..." className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none" />
                                         <button className="bg-slate-900 text-white px-5 rounded-xl"><Icon name="plus" /></button>
                                     </form>
                                     <div className="max-h-[200px] overflow-y-auto custom-scrollbar space-y-1">
@@ -648,25 +695,25 @@
                             </div>
                             <div className="space-y-6">
                                 <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                                    <h2 className="font-bold mb-4 flex items-center gap-2 text-slate-700 uppercase tracking-tight italic text-sm"><Icon name="clock" /> Anggaran Masa Perlawanan</h2>
+                                    <h2 className="font-bold mb-4 flex items-center gap-2 text-slate-700 uppercase tracking-tight italic text-sm"><Icon name="clock" /> Time Estimation / Anggaran Masa</h2>
                                     <div className="grid grid-cols-2 gap-4 mb-4">
                                         <div>
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Mula</label>
-                                            <input type="time" value={startTime} onChange={e => { setStartTime(e.target.value); syncToCloud({ startTime: e.target.value }); }} className="w-full px-3 py-2 bg-slate-50 rounded-lg font-bold border border-slate-100" />
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Start / Mula</label>
+                                            <input type="time" value={startTime} onChange={e => { setStartTime(e.target.value); syncToCloud({ startTime: e.target.value }); }} className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg font-bold" />
                                         </div>
                                         <div>
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Gelanggang</label>
-                                            <select value={numCourts} onChange={e => { setNumCourts(parseInt(e.target.value)); syncToCloud({ numCourts: parseInt(e.target.value) }); }} className="w-full px-3 py-2 bg-slate-50 rounded-lg font-bold border border-slate-100">
-                                                {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n} Gelanggang</option>)}
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Courts / Gelanggang</label>
+                                            <select value={numCourts} onChange={e => { setNumCourts(parseInt(e.target.value)); syncToCloud({ numCourts: parseInt(e.target.value) }); }} className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg font-bold">
+                                                {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n} Courts / Gelanggang</option>)}
                                             </select>
                                         </div>
                                     </div>
                                     <div className="mb-6">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Durasi/Game (min)</label>
-                                        <input type="number" value={matchDuration} onChange={e => { setMatchDuration(parseInt(e.target.value)); syncToCloud({ matchDuration: parseInt(e.target.value) }); }} className="w-full px-3 py-2 bg-slate-50 rounded-lg font-bold border border-slate-100" />
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Match Duration / Durasi (min)</label>
+                                        <input type="number" value={matchDuration} onChange={e => { setMatchDuration(parseInt(e.target.value)); syncToCloud({ matchDuration: parseInt(e.target.value) }); }} className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg font-bold" />
                                     </div>
                                     <button onClick={handleStartMatch} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-lg shadow-xl uppercase italic tracking-tight active:scale-95 transition-all">
-                                        Jana Jadual {matchFormat === 'team' ? 'Liga' : 'Scramble'}
+                                        Generate / Jana Jadual {matchFormat === 'team' ? 'League' : 'Scramble'}
                                     </button>
                                 </div>
                             </div>
@@ -677,15 +724,15 @@
                         <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
                             <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4">
                                 <div>
-                                    <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">Anggaran Selesai</h2>
+                                    <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Finish Time / Selesai</h2>
                                     <div className="text-3xl font-black italic">{getFinishTime()}</div>
                                 </div>
                                 <div className="text-right flex flex-col items-center sm:items-end">
-                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Ringkasan</div>
+                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Summary / Ringkasan</div>
                                     <div className="flex gap-4">
                                         <div className="bg-slate-800 px-4 py-2 rounded-xl text-center">
-                                            <div className="text-xs font-black">{schedule.length}</div>
-                                            <div className="text-[8px] text-slate-500 uppercase font-black">Match</div>
+                                            <div className="text-xs font-black">{schedule?.length || 0}</div>
+                                            <div className="text-[8px] text-slate-500 uppercase font-black">Matches</div>
                                         </div>
                                         <div className="bg-slate-800 px-4 py-2 rounded-xl text-center">
                                             <div className="text-xs font-black">{numCourts}</div>
@@ -696,7 +743,7 @@
                             </div>
 
                             <div className="grid gap-4">
-                                {schedule.map((m, idx) => (
+                                {schedule && schedule.map((m, idx) => (
                                     <div key={idx} className={`p-6 bg-white rounded-3xl border-2 transition-all ${scores[idx]?.confirmed ? 'border-lime-500 bg-lime-50/10 shadow-md' : 'border-slate-100 shadow-sm'}`}>
                                         <div className="flex justify-between items-center mb-4">
                                             <div className="flex items-center gap-2">
@@ -708,17 +755,17 @@
                                             <div className="flex items-center gap-2">
                                                 {scores[idx]?.confirmed ? (
                                                     <div className="flex items-center gap-1.5 bg-lime-500 text-white px-3 py-1 rounded-full text-[9px] font-black uppercase shadow-sm">
-                                                        <Icon name="lock" className="w-3 h-3" /> Markah Sah
+                                                        <Icon name="lock" className="w-3 h-3" /> Valid / Sah
                                                     </div>
                                                 ) : scores[idx]?.completed ? (
-                                                    <div className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-[9px] font-black uppercase">Menunggu Pengesahan</div>
+                                                    <div className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-[9px] font-black uppercase">Unconfirmed / Belum Sah</div>
                                                 ) : null}
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-4 text-center mb-6">
                                             <div className="space-y-2">
                                                 <div className="font-black text-sm text-slate-800 uppercase line-clamp-2 min-h-[40px] flex items-center justify-center">
-                                                    {m.isScramble ? `${m.p1} & ${m.p2}` : finalTeams[m.home]?.name}
+                                                    {m.isScramble ? `${m.p1} & ${m.p2}` : (finalTeams[m.home]?.name || 'N/A')}
                                                 </div>
                                                 <input 
                                                     type="number" 
@@ -735,7 +782,7 @@
                                             </div>
                                             <div className="space-y-2">
                                                 <div className="font-black text-sm text-slate-800 uppercase line-clamp-2 min-h-[40px] flex items-center justify-center">
-                                                    {m.isScramble ? `${m.p3} & ${m.p4}` : finalTeams[m.away]?.name}
+                                                    {m.isScramble ? `${m.p3} & ${m.p4}` : (finalTeams[m.away]?.name || 'N/A')}
                                                 </div>
                                                 <input 
                                                     type="number" 
@@ -750,12 +797,12 @@
                                         <div className="flex justify-center border-t border-slate-50 pt-4">
                                             <button 
                                                 onClick={() => toggleConfirmScore(idx)}
-                                                className={`flex items-center gap-2 px-6 py-2 rounded-xl text-xs font-black transition-all ${scores[idx]?.confirmed ? 'bg-slate-100 text-slate-400 hover:bg-slate-200' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-md'}`}
+                                                className={`flex items-center gap-2 px-6 py-2 rounded-xl text-[10px] font-black transition-all ${scores[idx]?.confirmed ? 'bg-slate-100 text-slate-400 hover:bg-slate-200' : 'bg-slate-900 text-white hover:bg-slate-800 shadow-md'}`}
                                             >
                                                 {scores[idx]?.confirmed ? (
-                                                    <><Icon name="unlock" className="w-3.5 h-3.5" /> Buka Kunci</>
+                                                    <><Icon name="unlock" className="w-3.5 h-3.5" /> UNLOCK / BUKA</>
                                                 ) : (
-                                                    <><Icon name="check-circle" className="w-3.5 h-3.5" /> Sahkan Markah</>
+                                                    <><Icon name="check-circle" className="w-3.5 h-3.5" /> CONFIRM / SAHKAN</>
                                                 )}
                                             </button>
                                         </div>
@@ -771,13 +818,13 @@
                                 <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center text-orange-600">
                                     <Icon name="info" />
                                 </div>
-                                <div className="text-xs font-bold text-orange-800">
-                                    Nota: Hanya perlawanan yang telah <span className="underline">disahkan markah</span> sahaja dikira dalam ranking.
+                                <div className="text-[11px] font-bold text-orange-800">
+                                    Note: Only <span className="underline italic">confirmed matches</span> are counted in the leaderboard. / Nota: Hanya perlawanan yang telah <span className="underline italic">disahkan markah</span> sahaja dikira dalam ranking.
                                 </div>
                             </div>
                             <div className="flex justify-end">
-                                <button onClick={downloadPNG} disabled={isExporting} className="bg-lime-500 text-slate-900 px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 hover:bg-lime-400 transition-all shadow-lg shadow-lime-100">
-                                    <Icon name="download" /> {isExporting ? "Menjana Imej..." : "Muat Turun Keputusan (PNG)"}
+                                <button onClick={downloadPNG} disabled={isExporting} className="bg-lime-500 text-slate-900 px-6 py-3 rounded-2xl font-black text-xs flex items-center gap-2 hover:bg-lime-400 transition-all shadow-lg shadow-lime-100 uppercase tracking-tight italic">
+                                    <Icon name="download" /> {isExporting ? "Exporting / Menjana..." : "Download Result / Muat Turun (PNG)"}
                                 </button>
                             </div>
 
@@ -790,7 +837,7 @@
                                     <div className="text-slate-500 font-bold flex items-center justify-center gap-2 mt-1">
                                         <Icon name="map-pin" className="w-4 h-4 text-slate-400" /> {sessionLocation}
                                     </div>
-                                    <p className="text-slate-400 font-bold tracking-widest text-[10px] uppercase mt-1">{new Date(sessionDate).toLocaleDateString('ms-MY', { day: 'numeric', month: 'long', year: 'numeric' })} • Format {matchFormat === 'scramble' ? 'Individu (Scramble)' : 'Pasukan'}</p>
+                                    <p className="text-slate-400 font-bold tracking-widest text-[10px] uppercase mt-1">{new Date(sessionDate).toLocaleDateString('ms-MY', { day: 'numeric', month: 'long', year: 'numeric' })} • Format: {matchFormat === 'scramble' ? 'Scramble' : 'Team'}</p>
                                 </div>
 
                                 <div className="overflow-x-auto">
@@ -798,14 +845,14 @@
                                         <thead>
                                             <tr className="text-[10px] font-black text-slate-400 uppercase border-b border-slate-100">
                                                 <th className="px-6 py-4">Pos</th>
-                                                <th className="px-6 py-4">Pemain</th>
-                                                <th className="px-6 py-4 text-center">Menang</th>
-                                                <th className="px-6 py-4 text-center">Kalah</th>
-                                                <th className="px-6 py-4 text-center">Mata</th>
+                                                <th className="px-6 py-4">Player / Pemain</th>
+                                                <th className="px-6 py-4 text-center">Win / Menang</th>
+                                                <th className="px-6 py-4 text-center">Lost / Kalah</th>
+                                                <th className="px-6 py-4 text-center">Pts / Mata</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {stats.players.map((p, i) => (
+                                            {stats.players && stats.players.map((p, i) => (
                                                 <tr key={i} className={`border-b border-slate-50 last:border-0 transition-colors ${i === 0 ? 'bg-yellow-50/50' : ''}`}>
                                                     <td className="px-6 py-5">
                                                         <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${i === 0 ? 'bg-yellow-400 text-white shadow-lg shadow-yellow-200' : i === 1 ? 'bg-slate-200 text-slate-500' : i === 2 ? 'bg-orange-100 text-orange-600' : 'bg-slate-50 text-slate-400'}`}>
@@ -833,15 +880,20 @@
                                     </table>
                                 </div>
                                 <div className="mt-12 grid grid-cols-3 gap-4 border-t border-slate-100 pt-8">
-                                    {stats.players.slice(0, 3).map((p, i) => (
+                                    {stats.players && stats.players.slice(0, 3).map((p, i) => (
                                         <div key={i} className="text-center p-4 rounded-3xl bg-slate-50 border border-slate-100">
-                                            <div className="text-[10px] font-black text-slate-400 uppercase mb-1">{i === 0 ? 'Juara' : i === 1 ? 'Naib Juara' : 'Ketiga'}</div>
+                                            <div className="text-[10px] font-black text-slate-400 uppercase mb-1">{i === 0 ? 'Winner / Juara' : i === 1 ? 'Runner Up / Naib Juara' : '3rd Place / Ketiga'}</div>
                                             <div className={`font-black uppercase text-sm ${i === 0 ? 'text-yellow-600' : 'text-slate-700'}`}>{p.name}</div>
                                         </div>
                                     ))}
                                 </div>
-                                <div className="text-center mt-8 text-[8px] font-bold text-slate-300 uppercase tracking-widest italic">
-                                    Pickleball Pro-Maker by <a href="https://wa.me/60135792215" target="_blank" className="underline decoration-dotted">Pahan</a>
+                                <div className="text-center mt-10">
+                                    <p className="text-[9px] font-black text-lime-600 uppercase tracking-widest px-4 max-w-md mx-auto mb-4">
+                                        Free for all Malaysian Pickleball Community / Percuma untuk kegunaan komuniti pickleball Malaysia semua.
+                                    </p>
+                                    <div className="text-[8px] font-bold text-slate-300 uppercase tracking-widest italic">
+                                        Pickleball Pro-Maker by <a href="https://wa.me/60135792215" target="_blank" className="underline decoration-dotted">Pahan</a>
+                                    </div>
                                 </div>
                             </div>
                         </div>
