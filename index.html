@@ -13,8 +13,10 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- html2canvas for PNG Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
-    <!-- Firebase Compat -->
+    <!-- Firebase Compat (v10.7.1) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -33,26 +35,29 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
         
-        // Inisialisasi Firebase
-        const firebaseConfig = JSON.parse(window.__firebase_config || '{}');
-        const appId = window.__app_id || 'pickleball-pro-pahan';
-        const initialToken = window.__initial_auth_token;
+        // Konfigurasi Firebase Anda
+        const firebaseConfig = {
+            apiKey: "AIzaSyD8FX1Y7ELzZMjSkAJWGtZhjY47DgFXYtY",
+            authDomain: "pickleball-ec298.firebaseapp.com",
+            projectId: "pickleball-ec298",
+            storageBucket: "pickleball-ec298.firebasestorage.app",
+            messagingSenderId: "39328471162",
+            appId: "1:39328471162:web:c70ee33fd62f1fad01c3c3"
+        };
         
+        // Inisialisasi Firebase
         const app = firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
 
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'pickleball-pro-pahan';
+        const initialToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
         const trophyNames = [
-            "Piala Merdeka",
-            "Piala Akhir Tahun",
-            "Piala Mingguan",
-            "Cabaran Hujung Minggu",
-            "Pickleball Smash Cup",
-            "Liga Persahabatan Pahan",
-            "Piala Juara Kampung",
-            "The Pickleball Masters",
-            "Piala Santai Petang",
-            "Battle of the Paddles"
+            "Piala Merdeka", "Piala Akhir Tahun", "Piala Mingguan", 
+            "Cabaran Hujung Minggu", "Pickleball Smash Cup", 
+            "Liga Persahabatan", "Piala Juara Kampung", 
+            "The Pickleball Masters", "Piala Santai Petang", "Battle of the Paddles"
         ];
 
         const Icon = ({ name, className = "w-5 h-5" }) => {
@@ -66,6 +71,60 @@
             return <span ref={iconRef} className="inline-flex items-center justify-center"></span>;
         };
 
+        const SessionWinnerSummary = ({ session }) => {
+            const getWinner = () => {
+                if (!session.scores || !Object.keys(session.scores).length) return null;
+                
+                const scores = session.scores;
+                const schedule = session.schedule || [];
+                const format = session.matchFormat || 'team';
+                const pStats = {};
+                const tStats = {};
+
+                if (format === 'team') {
+                    let finalTeams = [];
+                    try { finalTeams = typeof session.finalTeams === 'string' ? JSON.parse(session.finalTeams) : session.finalTeams; } catch(e) {}
+                    if (!finalTeams || !finalTeams.length) return null;
+
+                    finalTeams.forEach((t, i) => tStats[i] = { name: t.name, points: 0 });
+                    Object.entries(scores).forEach(([idx, data]) => {
+                        if (!data.completed) return;
+                        const m = schedule[idx];
+                        if (!m) return;
+                        if (data.home > data.away) tStats[m.home].points += 2;
+                        else if (data.away > data.home) tStats[m.away].points += 2;
+                    });
+                    const sortedTeams = Object.values(tStats).sort((a, b) => b.points - a.points);
+                    return sortedTeams.length ? { name: sortedTeams[0].name, isTeam: true } : null;
+                } else {
+                    schedule.forEach(m => {
+                        [m.p1, m.p2, m.p3, m.p4].forEach(p => { if(!pStats[p]) pStats[p] = { points: 0 }; });
+                    });
+                    Object.entries(scores).forEach(([idx, data]) => {
+                        if (!data.completed) return;
+                        const m = schedule[idx];
+                        if (!m) return;
+                        if (data.home > data.away) [m.p1, m.p2].forEach(p => pStats[p].points += 2);
+                        else if (data.away > data.home) [m.p3, m.p4].forEach(p => pStats[p].points += 2);
+                    });
+                    const sortedPlayers = Object.entries(pStats).map(([name, s]) => ({ name, ...s })).sort((a, b) => b.points - a.points);
+                    return sortedPlayers.length ? { name: sortedPlayers[0].name, isTeam: false } : null;
+                }
+            };
+
+            const winner = getWinner();
+            if (!winner) return <span className="text-[10px] text-slate-400 italic">Belum ada pemenang</span>;
+
+            return (
+                <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-yellow-500"><Icon name="crown" className="w-3.5 h-3.5" /></span>
+                    <span className="text-[11px] font-black text-slate-700 uppercase tracking-tight truncate max-w-[150px]">
+                        Juara: {winner.name}
+                    </span>
+                </div>
+            );
+        };
+
         const App = () => {
             const [user, setUser] = useState(null);
             const [sessions, setSessions] = useState([]);
@@ -73,13 +132,16 @@
             const [view, setView] = useState('menu');
             const [sessionDate, setSessionDate] = useState(new Date().toISOString().split('T')[0]);
             const [sessionTitle, setSessionTitle] = useState('');
+            const [matchFormat, setMatchFormat] = useState('team');
             
-            // Input States
+            const [startTime, setStartTime] = useState("19:00");
+            const [matchDuration, setMatchDuration] = useState(20);
+            const [numCourts, setNumCourts] = useState(1);
+
             const [individualName, setIndividualName] = useState('');
             const [manualTeamName, setManualTeamName] = useState('');
             const [manualMembers, setManualMembers] = useState('');
             
-            // Data States
             const [players, setPlayers] = useState([]); 
             const [teams, setTeams] = useState([]); 
             const [finalTeams, setFinalTeams] = useState([]); 
@@ -90,8 +152,8 @@
             const [activeTab, setActiveTab] = useState('players');
             const [isSaving, setIsSaving] = useState(false);
             const [sessionToDelete, setSessionToDelete] = useState(null);
+            const [isExporting, setIsExporting] = useState(false);
 
-            // Fungsi untuk pilih nama piala rawak
             const randomizeTrophy = () => {
                 const randomName = trophyNames[Math.floor(Math.random() * trophyNames.length)];
                 setSessionTitle(randomName);
@@ -101,9 +163,19 @@
                 randomizeTrophy();
                 const initAuth = async () => {
                     try {
-                        if (initialToken) await auth.signInWithCustomToken(initialToken);
-                        else await auth.signInAnonymously();
-                    } catch (error) { console.error("Auth Error:", error); }
+                        if (initialToken) {
+                            try {
+                                await auth.signInWithCustomToken(initialToken);
+                            } catch (e) {
+                                if (e.code === 'auth/custom-token-mismatch' || e.code === 'auth/invalid-custom-token') {
+                                    await auth.signInAnonymously();
+                                } else { throw e; }
+                            }
+                        } else { await auth.signInAnonymously(); }
+                    } catch (error) { 
+                        console.error("Auth Error:", error); 
+                        try { await auth.signInAnonymously(); } catch(i) {}
+                    }
                 };
                 initAuth();
                 const unsubscribe = auth.onAuthStateChanged((u) => setUser(u));
@@ -116,7 +188,7 @@
                 return sessionsRef.onSnapshot((snapshot) => {
                     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     setSessions(data.sort((a, b) => new Date(b.date) - new Date(a.date)));
-                }, (error) => console.error("Snapshot error:", error));
+                });
             }, [user]);
 
             useEffect(() => {
@@ -127,6 +199,10 @@
                         const data = snapshot.data();
                         setPlayers(data.players || []);
                         setSessionTitle(data.title || 'Tiada Nama');
+                        setMatchFormat(data.matchFormat || 'team');
+                        setStartTime(data.startTime || "19:00");
+                        setMatchDuration(data.matchDuration || 20);
+                        setNumCourts(data.numCourts || 1);
                         
                         let parsedTeams = [];
                         let parsedFinalTeams = [];
@@ -154,6 +230,10 @@
                     const newDoc = await sessionsRef.add({
                         title: sessionTitle || "Piala Tanpa Nama",
                         date: sessionDate,
+                        matchFormat,
+                        startTime,
+                        matchDuration,
+                        numCourts,
                         players: [],
                         teams: JSON.stringify([]),
                         finalTeams: JSON.stringify([]),
@@ -183,6 +263,21 @@
                     const sessionDoc = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('sessions').doc(currentSessionId);
                     await sessionDoc.update(newData);
                 } catch (e) { console.error("Update Error:", e); }
+            };
+
+            const calculateTime = (idx) => {
+                const [h, m] = startTime.split(':').map(Number);
+                const totalMinutes = (h * 60) + m + (Math.floor(idx / numCourts) * matchDuration);
+                const currentH = Math.floor(totalMinutes / 60) % 24;
+                const currentM = totalMinutes % 60;
+                const period = currentH >= 12 ? 'PM' : 'AM';
+                const displayH = currentH % 12 || 12;
+                return `${displayH}:${currentM.toString().padStart(2, '0')} ${period}`;
+            };
+
+            const getFinishTime = () => {
+                if (schedule.length === 0) return "--";
+                return calculateTime(schedule.length);
             };
 
             const addIndividualPlayer = (e) => {
@@ -220,81 +315,115 @@
             };
 
             const handleStartMatch = () => {
-                const combinedTeams = [...teams];
-                if (players.length > 0) {
-                    const shuffledIndividuals = [...players].sort(() => Math.random() - 0.5);
-                    for (let i = 0; i < shuffledIndividuals.length; i += playersPerTeam) {
-                        const members = shuffledIndividuals.slice(i, i + playersPerTeam);
-                        combinedTeams.push({
-                            name: `Mix Team ${Math.floor(i/playersPerTeam) + 1}`,
-                            members: members
-                        });
+                let finalSchedule = [];
+                let finalTeamsList = [];
+                if (matchFormat === 'team') {
+                    finalTeamsList = [...teams];
+                    if (players.length > 0) {
+                        const shuffledIndividuals = [...players].sort(() => Math.random() - 0.5);
+                        for (let i = 0; i < shuffledIndividuals.length; i += playersPerTeam) {
+                            const members = shuffledIndividuals.slice(i, i + playersPerTeam);
+                            finalTeamsList.push({ name: `Mix Team ${Math.floor(i/playersPerTeam) + 1}`, members });
+                        }
+                    }
+                    if (finalTeamsList.length < 2) return alert("Perlukan sekurang-kurangnya 2 pasukan.");
+                    for (let i = 0; i < finalTeamsList.length; i++) {
+                        for (let j = i + 1; j < finalTeamsList.length; j++) {
+                            finalSchedule.push({ home: i, away: j });
+                        }
+                    }
+                } else {
+                    let allPlayers = [...players];
+                    teams.forEach(t => allPlayers.push(...t.members));
+                    allPlayers = [...new Set(allPlayers)];
+                    if (allPlayers.length < 4) return alert("Perlukan sekurang-kurangnya 4 pemain untuk Scramble.");
+                    const rounds = Math.min(allPlayers.length - 1, 6);
+                    for (let r = 0; r < rounds; r++) {
+                        const shuffled = [...allPlayers].sort(() => Math.random() - 0.5);
+                        for (let i = 0; i < shuffled.length - 3; i += 4) {
+                            finalSchedule.push({ isScramble: true, p1: shuffled[i], p2: shuffled[i+1], p3: shuffled[i+2], p4: shuffled[i+3] });
+                        }
                     }
                 }
-                if (combinedTeams.length < 2) return;
-                const newSchedule = [];
-                for (let i = 0; i < combinedTeams.length; i++) {
-                    for (let j = i + 1; j < combinedTeams.length; j++) {
-                        newSchedule.push({ home: i, away: j });
-                    }
-                }
-                syncToCloud({
-                    finalTeams: JSON.stringify(combinedTeams),
-                    schedule: newSchedule,
-                    scores: {},
+                syncToCloud({ 
+                    finalTeams: JSON.stringify(finalTeamsList), 
+                    schedule: finalSchedule, 
+                    scores: {}, 
                     isGenerated: true,
-                    playersPerTeam
+                    startTime,
+                    matchDuration,
+                    numCourts
                 });
                 setActiveTab('schedule');
             };
 
             const updateScore = (matchIdx, side, value) => {
-                const newScores = { 
-                    ...scores, 
-                    [matchIdx]: { ...scores[matchIdx], [side]: parseInt(value) || 0, completed: true } 
-                };
+                const val = value === '' ? 0 : parseInt(value);
+                const newScores = { ...scores, [matchIdx]: { ...scores[matchIdx], [side]: val, completed: true } };
                 setScores(newScores);
                 syncToCloud({ scores: newScores });
             };
 
             const stats = useMemo(() => {
-                if (!finalTeams || !finalTeams.length) return { teams: [], players: [] };
-                const teamStats = finalTeams.map((t, i) => ({ id: i, name: t.name, points: 0, wins: 0, members: t.members }));
                 const pStats = {};
-                finalTeams.forEach(t => t.members.forEach(p => pStats[p] = { points: 0, wins: 0 }));
-                Object.entries(scores).forEach(([idx, data]) => {
-                    if (!data.completed) return;
-                    const m = schedule[idx];
-                    if (!m) return;
-                    const hScore = data.home || 0;
-                    const aScore = data.away || 0;
-                    if (hScore > aScore) {
-                        const winIdx = m.home;
-                        if (teamStats[winIdx]) {
-                            teamStats[winIdx].points += 2;
-                            teamStats[winIdx].wins += 1;
-                            finalTeams[winIdx].members.forEach(p => { if(pStats[p]) { pStats[p].points += 2; pStats[p].wins += 1; } });
+                const tStats = [];
+                if (matchFormat === 'team') {
+                    finalTeams.forEach((t, i) => {
+                        tStats.push({ id: i, name: t.name, points: 0, wins: 0, losses: 0, members: t.members });
+                        t.members.forEach(p => pStats[p] = { points: 0, wins: 0, losses: 0 });
+                    });
+                    Object.entries(scores).forEach(([idx, data]) => {
+                        if (!data.completed || !schedule[idx]) return;
+                        const m = schedule[idx];
+                        if (data.home > data.away) {
+                            tStats[m.home].points += 2; tStats[m.home].wins += 1;
+                            tStats[m.home].members.forEach(p => { if(pStats[p]) { pStats[p].points += 2; pStats[p].wins += 1; } });
+                            tStats[m.away].losses += 1;
+                            tStats[m.away].members.forEach(p => { if(pStats[p]) pStats[p].losses += 1; });
+                        } else if (data.away > data.home) {
+                            tStats[m.away].points += 2; tStats[m.away].wins += 1;
+                            tStats[m.away].members.forEach(p => { if(pStats[p]) { pStats[p].points += 2; pStats[p].wins += 1; } });
+                            tStats[m.home].losses += 1;
+                            tStats[m.home].members.forEach(p => { if(pStats[p]) { pStats[p].losses += 1; } });
                         }
-                    } else if (aScore > hScore) {
-                        const winIdx = m.away;
-                        if (teamStats[winIdx]) {
-                            teamStats[winIdx].points += 2;
-                            teamStats[winIdx].wins += 1;
-                            finalTeams[winIdx].members.forEach(p => { if(pStats[p]) { pStats[p].points += 2; pStats[p].wins += 1; } });
+                    });
+                } else {
+                    schedule.forEach(m => { [m.p1, m.p2, m.p3, m.p4].forEach(p => { if(!pStats[p]) pStats[p] = { points: 0, wins: 0, losses: 0 }; }); });
+                    Object.entries(scores).forEach(([idx, data]) => {
+                        if (!data.completed || !schedule[idx]) return;
+                        const m = schedule[idx];
+                        if (data.home > data.away) {
+                            [m.p1, m.p2].forEach(p => { pStats[p].points += 2; pStats[p].wins += 1; });
+                            [m.p3, m.p4].forEach(p => { pStats[p].losses += 1; });
+                        } else if (data.away > data.home) {
+                            [m.p3, m.p4].forEach(p => { pStats[p].points += 2; pStats[p].wins += 1; });
+                            [m.p1, m.p2].forEach(p => { pStats[p].losses += 1; });
                         }
-                    }
-                });
-                return {
-                    teams: [...teamStats].sort((a, b) => b.points - a.points),
-                    players: Object.entries(pStats).map(([name, s]) => ({ name, ...s })).sort((a, b) => b.points - a.points)
-                };
-            }, [scores, finalTeams, schedule]);
+                    });
+                }
+                return { teams: tStats.sort((a, b) => b.points - a.points), players: Object.entries(pStats).map(([name, s]) => ({ name, ...s })).sort((a, b) => b.points - a.points || a.losses - b.losses) };
+            }, [scores, finalTeams, schedule, matchFormat]);
+
+            const downloadPNG = async () => {
+                const element = document.getElementById('leaderboard-export');
+                if (!element) return;
+                setIsExporting(true);
+                setTimeout(async () => {
+                    const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#ffffff' });
+                    const image = canvas.toDataURL("image/png");
+                    const link = document.createElement('a');
+                    link.download = `Keputusan-${sessionTitle}-${sessionDate}.png`;
+                    link.href = image;
+                    link.click();
+                    setIsExporting(false);
+                }, 100);
+            };
 
             if (!user && sessions.length === 0) {
                 return (
                     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-400">
                         <Icon name="loader" className="w-10 h-10 animate-spin mb-4" />
-                        <p className="font-bold uppercase tracking-widest text-xs">Menyambung ke Pahan Database...</p>
+                        <p className="font-bold uppercase tracking-widest text-xs text-center">Menyambung ke Pahan Database...</p>
                     </div>
                 );
             }
@@ -307,42 +436,47 @@
                                 <Icon name="trophy" className="w-10 h-10 text-slate-900" />
                             </div>
                             <h1 className="text-4xl font-black tracking-tight text-slate-900">Pickleball Pro-Maker</h1>
-                            <p className="text-slate-500 italic mt-1 font-medium tracking-tight">by Pahan</p>
+                            <p className="text-slate-500 italic mt-1 font-medium tracking-tight">
+                                by <a href="https://wa.me/60135792215" target="_blank" className="hover:text-lime-600 underline decoration-dotted transition-colors">Pahan</a>
+                            </p>
                         </header>
 
                         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 mb-6">
                             <h2 className="font-bold mb-4 flex items-center gap-2 text-lime-600"><Icon name="plus" /> Sesi Baru</h2>
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Nama Piala / Kejohanan</label>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Nama Kejohanan</label>
                                     <div className="flex gap-2">
-                                        <input 
-                                            type="text" 
-                                            value={sessionTitle} 
-                                            onChange={e => setSessionTitle(e.target.value)} 
-                                            placeholder="cth: Piala Merdeka..." 
-                                            className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" 
-                                        />
-                                        <button 
-                                            onClick={randomizeTrophy}
-                                            className="bg-slate-100 text-slate-500 p-3 rounded-xl hover:bg-slate-200 transition-colors"
-                                            title="Pilih secara rawak"
-                                        >
-                                            <Icon name="refresh-cw" className="w-5 h-5" />
+                                        <input type="text" value={sessionTitle} onChange={e => setSessionTitle(e.target.value)} placeholder="cth: Piala Merdeka..." className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" />
+                                        <button onClick={randomizeTrophy} className="bg-slate-100 text-slate-500 p-3 rounded-xl hover:bg-slate-200 transition-colors"><Icon name="refresh-cw" /></button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Format Perlawanan</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button onClick={() => setMatchFormat('team')} className={`p-4 rounded-xl border-2 flex flex-col items-center gap-1 transition-all ${matchFormat === 'team' ? 'border-blue-500 bg-blue-50' : 'border-slate-100'}`}>
+                                            <Icon name="users" className={matchFormat === 'team' ? 'text-blue-600' : 'text-slate-300'} />
+                                            <span className={`text-[10px] font-black uppercase ${matchFormat === 'team' ? 'text-blue-700' : 'text-slate-400'}`}>Pasukan (Official)</span>
+                                        </button>
+                                        <button onClick={() => setMatchFormat('scramble')} className={`p-4 rounded-xl border-2 flex flex-col items-center gap-1 transition-all ${matchFormat === 'scramble' ? 'border-orange-500 bg-orange-50' : 'border-slate-100'}`}>
+                                            <Icon name="refresh-ccw" className={matchFormat === 'scramble' ? 'text-orange-600' : 'text-slate-300'} />
+                                            <span className={`text-[10px] font-black uppercase ${matchFormat === 'scramble' ? 'text-orange-700' : 'text-slate-400'}`}>Individu (Scramble)</span>
                                         </button>
                                     </div>
                                 </div>
-                                <div className="flex flex-col sm:flex-row gap-3">
-                                    <div className="flex-1">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Tarikh</label>
-                                        <input type="date" value={sessionDate} onChange={e => setSessionDate(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" />
+                                        <input type="date" value={sessionDate} onChange={e => setSessionDate(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none" />
                                     </div>
-                                    <div className="flex items-end">
-                                        <button onClick={createNewSession} disabled={isSaving} className="w-full sm:w-auto bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-800 transition-all disabled:opacity-50 h-[50px]">
-                                            {isSaving ? "Mula..." : "Mula Sesi"}
-                                        </button>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Masa Mula</label>
+                                        <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none" />
                                     </div>
                                 </div>
+                                <button onClick={createNewSession} disabled={isSaving} className="w-full bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-lg hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 active:scale-95 tracking-tight uppercase italic">
+                                    {isSaving ? "Sedang Bina..." : "Mula Sesi Sekarang"}
+                                </button>
                             </div>
                         </div>
 
@@ -353,39 +487,36 @@
                             {sessions.map(s => (
                                 <div key={s.id} className="group relative">
                                     <button onClick={() => { setCurrentSessionId(s.id); setView('active'); }} className="w-full flex items-center justify-between p-5 bg-white rounded-2xl border border-slate-100 hover:border-lime-400 hover:shadow-md transition-all">
-                                        <div className="flex items-center gap-4 text-left">
-                                            <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center font-black text-slate-400 group-hover:bg-lime-50 group-hover:text-lime-600">
-                                                {new Date(s.date).getDate()}
+                                        <div className="flex items-start gap-4 text-left">
+                                            <div className="w-12 h-12 bg-slate-50 rounded-xl flex flex-col items-center justify-center font-black group-hover:bg-lime-50 transition-colors">
+                                                <Icon name={s.matchFormat === 'team' ? 'users' : 'user'} className={`w-5 h-5 ${s.matchFormat === 'team' ? 'text-blue-400' : 'text-orange-400'}`} />
+                                                <span className="text-[8px] mt-0.5 text-slate-400 font-bold uppercase tracking-tighter">{s.matchFormat === 'team' ? 'Team' : 'Scrmb'}</span>
                                             </div>
-                                            <div>
-                                                <div className="font-bold text-slate-800 line-clamp-1">{s.title || "Sesi Tanpa Nama"}</div>
-                                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">
-                                                    {new Date(s.date).toLocaleDateString('ms-MY', { month: 'short', year: 'numeric', day: 'numeric' })} • {s.isGenerated ? "Selesai" : "Draf"}
+                                            <div className="flex-1 overflow-hidden">
+                                                <div className="font-bold text-slate-800 line-clamp-1 truncate">{s.title || "Sesi Tanpa Nama"}</div>
+                                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight flex items-center gap-2">
+                                                    <span className="flex items-center gap-1"><Icon name="calendar" className="w-2.5 h-2.5" /> {new Date(s.date).toLocaleDateString('ms-MY', { month: 'short', day: 'numeric' })}</span>
+                                                    <span>•</span>
+                                                    <span>{s.isGenerated ? "Selesai" : "Draf"}</span>
                                                 </div>
+                                                <SessionWinnerSummary session={s} />
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-3">
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); setSessionToDelete(s.id); }}
-                                                className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                                            >
-                                                <Icon name="trash-2" className="w-5 h-5" />
-                                            </button>
+                                            <button onClick={(e) => { e.stopPropagation(); setSessionToDelete(s.id); }} className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Icon name="trash-2" /></button>
                                             <Icon name="chevron-right" className="text-slate-300 group-hover:text-lime-500" />
                                         </div>
                                     </button>
                                 </div>
                             ))}
                         </div>
-
                         {sessionToDelete && (
                             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                                <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+                                <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl">
                                     <h3 className="text-xl font-black text-slate-900 mb-2">Padam Sesi?</h3>
-                                    <p className="text-slate-500 text-sm mb-6 font-medium">Data sesi ini akan dibuang secara kekal. Tindakan ini tidak boleh dibatalkan.</p>
                                     <div className="flex gap-3">
-                                        <button onClick={() => setSessionToDelete(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all">Batal</button>
-                                        <button onClick={() => deleteSession(sessionToDelete)} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition-all shadow-lg shadow-red-100">Padam</button>
+                                        <button onClick={() => setSessionToDelete(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Batal</button>
+                                        <button onClick={() => deleteSession(sessionToDelete)} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold">Padam</button>
                                     </div>
                                 </div>
                             </div>
@@ -401,9 +532,11 @@
                             <Icon name="chevron-left" /> Menu Utama
                         </button>
                         <div className="text-right">
-                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Acara:</div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-tighter italic">Format: {matchFormat === 'team' ? 'PASUKAN TETAP' : 'INDIVIDU (SCRAMBLE)'}</div>
                             <div className="font-bold text-slate-900 italic tracking-tight">{sessionTitle}</div>
-                            <div className="text-[10px] text-slate-400 font-bold">{new Date(sessionDate).toLocaleDateString('ms-MY')}</div>
+                            <p className="text-[10px] font-medium text-slate-400">
+                                by <a href="https://wa.me/60135792215" target="_blank" className="hover:text-lime-600 underline decoration-dotted">Pahan</a>
+                            </p>
                         </div>
                     </header>
 
@@ -418,155 +551,184 @@
                     {activeTab === 'players' && (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             <div className="space-y-6">
+                                {matchFormat === 'team' && (
+                                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                                        <h2 className="font-bold mb-4 flex items-center gap-2 text-orange-600 uppercase tracking-tight italic text-sm"><Icon name="user-plus" /> Daftar Pasukan Tetap</h2>
+                                        <form onSubmit={addManualTeam} className="space-y-3">
+                                            <input type="text" value={manualTeamName} onChange={e => setManualTeamName(e.target.value)} placeholder="Nama Pasukan" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 font-bold outline-none" />
+                                            <textarea value={manualMembers} onChange={e => setManualMembers(e.target.value)} placeholder="Nama Ahli (asingkan dengan koma)" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 font-medium h-20 outline-none" />
+                                            <button className="w-full bg-orange-500 text-white py-3 rounded-xl font-bold">Tambah Pasukan</button>
+                                        </form>
+                                    </div>
+                                )}
                                 <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                                    <h2 className="font-bold mb-4 flex items-center gap-2 text-orange-600 uppercase tracking-tight italic text-sm">
-                                        <Icon name="user-plus" /> Daftar Pasukan Tetap
-                                    </h2>
-                                    <form onSubmit={addManualTeam} className="space-y-3">
-                                        <input type="text" value={manualTeamName} onChange={e => setManualTeamName(e.target.value)} placeholder="Nama Pasukan" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500 font-bold" />
-                                        <textarea value={manualMembers} onChange={e => setManualMembers(e.target.value)} placeholder="Nama Ahli (asingkan dengan koma)" className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-orange-500 min-h-[80px] font-medium" />
-                                        <button className="w-full bg-orange-500 text-white py-3 rounded-xl font-bold hover:bg-orange-600 transition-colors shadow-lg shadow-orange-100">Tambah Pasukan</button>
-                                    </form>
-                                </div>
-                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                                    <h2 className="font-bold mb-4 flex items-center gap-2 text-lime-600 uppercase tracking-tight italic text-sm">
-                                        <Icon name="user" /> Daftar Pemain Individu ({players.length})
-                                    </h2>
+                                    <h2 className="font-bold mb-4 flex items-center gap-2 text-lime-600 uppercase tracking-tight italic text-sm"><Icon name="user" /> Daftar Pemain Individu ({players.length})</h2>
                                     <form onSubmit={addIndividualPlayer} className="flex gap-2 mb-4">
-                                        <input type="text" value={individualName} onChange={e => setIndividualName(e.target.value)} placeholder="Nama pemain..." className="flex-1 px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-lime-500" />
+                                        <input type="text" value={individualName} onChange={e => setIndividualName(e.target.value)} placeholder="Nama pemain..." className="flex-1 px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 outline-none" />
                                         <button className="bg-slate-900 text-white px-5 rounded-xl"><Icon name="plus" /></button>
                                     </form>
                                     <div className="max-h-[200px] overflow-y-auto custom-scrollbar space-y-1">
-                                        {players.length === 0 ? <p className="text-xs text-slate-400 italic text-center py-4">Tiada pemain individu</p> : 
-                                            players.map((p, i) => (
-                                                <div key={i} className="flex justify-between items-center px-3 py-2 bg-slate-50 rounded-lg text-sm font-bold">
-                                                    <span>{i + 1}. {p}</span>
-                                                    <button onClick={() => removeIndividualPlayer(i)} className="text-slate-300 hover:text-red-500"><Icon name="trash-2" className="w-3 h-3" /></button>
-                                                </div>
-                                            ))
-                                        }
+                                        {players.map((p, i) => (
+                                            <div key={i} className="flex justify-between items-center px-3 py-2 bg-slate-50 rounded-lg text-sm font-bold">
+                                                <span>{i + 1}. {p}</span>
+                                                <button onClick={() => removeIndividualPlayer(i)} className="text-slate-300 hover:text-red-500 transition-all"><Icon name="trash-2" className="w-3 h-3" /></button>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
                             <div className="space-y-6">
-                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm min-h-[400px]">
-                                    <h2 className="font-bold mb-4 flex items-center gap-2 text-slate-700 uppercase tracking-tight italic text-sm">
-                                        <Icon name="layout-grid" /> Ringkasan Pasukan Berdaftar
-                                    </h2>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
-                                        {teams.length === 0 && players.length === 0 ? 
-                                            <div className="col-span-full py-20 text-center text-slate-300 italic border-2 border-dashed border-slate-100 rounded-3xl">Sila daftar pasukan atau individu</div> : 
-                                            teams.map((t, i) => (
-                                                <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 relative group">
-                                                    <button onClick={() => removeTeam(i)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500"><Icon name="trash-2" className="w-3 h-3" /></button>
-                                                    <div className="text-xs font-black text-orange-600 uppercase mb-1">{t.name}</div>
-                                                    <div className="text-[10px] text-slate-400 font-bold">{t.members.join(' • ')}</div>
-                                                </div>
-                                            ))
-                                        }
-                                        {players.length > 0 && (
-                                            <div className="p-4 bg-lime-50 border border-lime-100 rounded-2xl sm:col-span-1">
-                                                <div className="text-xs font-black text-lime-700 uppercase mb-1">Kumpulan Individu</div>
-                                                <div className="text-[10px] text-lime-600 font-bold italic">{players.length} Pemain akan dijana menjadi "Mix Team"</div>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="border-t border-slate-100 pt-6">
-                                        <label className="text-[10px] font-black text-slate-400 mb-3 block uppercase tracking-widest text-center">Saiz Mix Team (Individu)</label>
-                                        <div className="flex justify-center gap-3 mb-6">
-                                            {[2, 3, 4].map(n => (
-                                                <button key={n} onClick={() => setPlayersPerTeam(n)} className={`w-12 h-12 rounded-xl border-2 font-black ${playersPerTeam === n ? 'border-lime-500 bg-lime-50 text-lime-700' : 'border-slate-100 text-slate-300'}`}>{n}</button>
-                                            ))}
+                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                                    <h2 className="font-bold mb-4 flex items-center gap-2 text-slate-700 uppercase tracking-tight italic text-sm"><Icon name="clock" /> Anggaran Masa Perlawanan</h2>
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
+                                        <div>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Mula</label>
+                                            <input type="time" value={startTime} onChange={e => { setStartTime(e.target.value); syncToCloud({ startTime: e.target.value }); }} className="w-full px-3 py-2 bg-slate-50 rounded-lg font-bold border border-slate-100" />
                                         </div>
-                                        <button onClick={handleStartMatch} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-lg shadow-xl hover:bg-slate-800 transition-all active:scale-95 uppercase italic tracking-tight">
-                                            Bina Jadual Perlawanan
-                                        </button>
+                                        <div>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Gelanggang</label>
+                                            <select value={numCourts} onChange={e => { setNumCourts(parseInt(e.target.value)); syncToCloud({ numCourts: parseInt(e.target.value) }); }} className="w-full px-3 py-2 bg-slate-50 rounded-lg font-bold border border-slate-100">
+                                                {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n} Gelanggang</option>)}
+                                            </select>
+                                        </div>
                                     </div>
+                                    <div className="mb-6">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Durasi/Game (min)</label>
+                                        <input type="number" value={matchDuration} onChange={e => { setMatchDuration(parseInt(e.target.value)); syncToCloud({ matchDuration: parseInt(e.target.value) }); }} className="w-full px-3 py-2 bg-slate-50 rounded-lg font-bold border border-slate-100" />
+                                    </div>
+                                    <button onClick={handleStartMatch} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-lg shadow-xl uppercase italic tracking-tight active:scale-95 transition-all">
+                                        Jana Jadual {matchFormat === 'team' ? 'Liga' : 'Scramble'}
+                                    </button>
                                 </div>
                             </div>
                         </div>
                     )}
 
                     {activeTab === 'schedule' && (
-                        <div className="grid gap-4 animate-in slide-in-from-bottom-4 duration-300">
-                             <div className="flex items-center justify-between px-2">
-                                <h2 className="text-xl font-black text-slate-800 uppercase italic">Jadual Perlawanan</h2>
-                                <div className="text-[10px] font-black bg-slate-900 text-white px-3 py-1 rounded-full">{schedule.length} Match Total</div>
-                            </div>
-                            {schedule.map((m, idx) => (
-                                <div key={idx} className={`p-6 bg-white rounded-3xl border-2 transition-all ${scores[idx]?.completed ? 'border-lime-100' : 'border-slate-100 shadow-sm'}`}>
-                                    <div className="flex justify-between text-[8px] font-black text-slate-300 uppercase tracking-widest mb-6">
-                                        <span>MATCH #{idx+1}</span>
-                                        {scores[idx]?.completed && <span className="text-lime-500 flex items-center gap-1 font-bold">SELESAI</span>}
-                                    </div>
-                                    <div className="grid grid-cols-[1fr,auto,1fr] items-center text-center gap-4">
-                                        <div className="space-y-2">
-                                            <div className="font-black text-sm text-slate-800 uppercase tracking-tight">{finalTeams[m.home]?.name}</div>
-                                            <div className="flex flex-wrap justify-center gap-1">
-                                                {finalTeams[m.home]?.members.map((p, i) => <span key={i} className="text-[9px] bg-slate-50 px-1.5 py-0.5 rounded font-bold text-slate-400">{p}</span>)}
-                                            </div>
-                                            <input type="number" value={scores[idx]?.home || ''} onChange={e => updateScore(idx, 'home', e.target.value)} placeholder="0" className="w-16 mx-auto py-2 bg-slate-50 border rounded-xl text-center font-black text-xl outline-none focus:border-lime-400" />
+                        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
+                            <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4">
+                                <div>
+                                    <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">Anggaran Selesai</h2>
+                                    <div className="text-3xl font-black italic">{getFinishTime()}</div>
+                                </div>
+                                <div className="text-right flex flex-col items-center sm:items-end">
+                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Ringkasan</div>
+                                    <div className="flex gap-4">
+                                        <div className="bg-slate-800 px-4 py-2 rounded-xl text-center">
+                                            <div className="text-xs font-black">{schedule.length}</div>
+                                            <div className="text-[8px] text-slate-500 uppercase font-black">Match</div>
                                         </div>
-                                        <div className="flex flex-col items-center">
-                                            <Icon name="swords" className="w-5 h-5 text-slate-200" />
-                                            <span className="text-[8px] font-black text-slate-300 mt-1 uppercase">Vs</span>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <div className="font-black text-sm text-slate-800 uppercase tracking-tight">{finalTeams[m.away]?.name}</div>
-                                            <div className="flex flex-wrap justify-center gap-1">
-                                                {finalTeams[m.away]?.members.map((p, i) => <span key={i} className="text-[9px] bg-slate-50 px-1.5 py-0.5 rounded font-bold text-slate-400">{p}</span>)}
-                                            </div>
-                                            <input type="number" value={scores[idx]?.away || ''} onChange={e => updateScore(idx, 'away', e.target.value)} placeholder="0" className="w-16 mx-auto py-2 bg-slate-50 border rounded-xl text-center font-black text-xl outline-none focus:border-lime-400" />
+                                        <div className="bg-slate-800 px-4 py-2 rounded-xl text-center">
+                                            <div className="text-xs font-black">{numCourts}</div>
+                                            <div className="text-[8px] text-slate-500 uppercase font-black">Courts</div>
                                         </div>
                                     </div>
                                 </div>
-                            ))}
+                            </div>
+
+                            <div className="grid gap-4">
+                                {schedule.map((m, idx) => (
+                                    <div key={idx} className={`p-6 bg-white rounded-3xl border-2 transition-all ${scores[idx]?.completed ? 'border-lime-100 bg-lime-50/10' : 'border-slate-100 shadow-sm'}`}>
+                                        <div className="flex justify-between items-center mb-4">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[8px] font-black bg-slate-100 text-slate-400 px-2 py-1 rounded-full uppercase tracking-widest">Match #{idx+1}</span>
+                                                <span className="text-[10px] font-black text-blue-500 flex items-center gap-1">
+                                                    <Icon name="clock" className="w-3 h-3" /> {calculateTime(idx)}
+                                                </span>
+                                            </div>
+                                            {scores[idx]?.completed && <span className="text-[8px] font-black text-lime-500 bg-lime-100 px-2 py-1 rounded-full uppercase">SELESAI</span>}
+                                        </div>
+                                        <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-4 text-center">
+                                            <div className="space-y-2">
+                                                <div className="font-black text-sm text-slate-800 uppercase line-clamp-2 min-h-[40px] flex items-center justify-center">
+                                                    {m.isScramble ? `${m.p1} & ${m.p2}` : finalTeams[m.home]?.name}
+                                                </div>
+                                                <input type="number" value={scores[idx]?.home || ''} onChange={e => updateScore(idx, 'home', e.target.value)} placeholder="0" className="w-16 mx-auto py-2 bg-slate-50 border rounded-xl text-center font-black text-xl outline-none" />
+                                            </div>
+                                            <div className="flex flex-col items-center">
+                                                <Icon name="swords" className="w-5 h-5 text-slate-200" />
+                                                <span className="text-[8px] font-black text-slate-300 mt-1 uppercase">Vs</span>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <div className="font-black text-sm text-slate-800 uppercase line-clamp-2 min-h-[40px] flex items-center justify-center">
+                                                    {m.isScramble ? `${m.p3} & ${m.p4}` : finalTeams[m.away]?.name}
+                                                </div>
+                                                <input type="number" value={scores[idx]?.away || ''} onChange={e => updateScore(idx, 'away', e.target.value)} placeholder="0" className="w-16 mx-auto py-2 bg-slate-50 border rounded-xl text-center font-black text-xl outline-none" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
 
                     {activeTab === 'leaderboard' && (
-                        <div className="space-y-10 animate-in slide-in-from-bottom-4 duration-300">
-                            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-                                <h2 className="text-lg font-black p-6 bg-slate-50 border-b border-slate-100 flex items-center gap-2 uppercase italic">
-                                    <Icon name="layout-grid" className="text-lime-500" /> Ranking Pasukan
-                                </h2>
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-slate-50/50 border-b border-slate-100">
-                                        <tr className="text-[10px] font-black text-slate-400 uppercase">
-                                            <th className="px-6 py-4">Pos</th>
-                                            <th className="px-6 py-4">Nama Pasukan</th>
-                                            <th className="px-6 py-4 text-center">Poin (Menang=2)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {stats.teams.map((t, i) => (
-                                            <tr key={i} className={`border-b border-slate-50 last:border-0 ${i === 0 ? 'bg-lime-50/20' : ''}`}>
-                                                <td className="px-6 py-4">
-                                                    <div className={`w-7 h-7 rounded-full flex items-center justify-center font-black text-[10px] ${i === 0 ? 'bg-yellow-400 text-white shadow-lg' : 'bg-slate-100 text-slate-400'}`}>{i+1}</div>
-                                                </td>
-                                                <td className="px-6 py-4 font-bold text-slate-800 uppercase tracking-tight text-xs">{t.name}</td>
-                                                <td className="px-6 py-4 text-center font-black text-slate-900">{t.points}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
+                            <div className="flex justify-end">
+                                <button onClick={downloadPNG} disabled={isExporting} className="bg-lime-500 text-slate-900 px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 hover:bg-lime-400 transition-all shadow-lg shadow-lime-100">
+                                    <Icon name="download" /> {isExporting ? "Menjana Imej..." : "Muat Turun Keputusan (PNG)"}
+                                </button>
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <h2 className="col-span-full text-lg font-black uppercase italic flex items-center gap-2 text-slate-800">
-                                    <Icon name="medal" className="text-orange-500" /> Pemain Paling Kuat (Individu)
-                                </h2>
-                                {stats.players.map((p, i) => (
-                                    <div key={p.name} className={`p-5 bg-white rounded-3xl border-2 flex justify-between items-center transition-all ${i === 0 ? 'border-orange-200 bg-orange-50/30 shadow-md' : 'border-slate-100 shadow-sm'}`}>
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${i === 0 ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>{i+1}</div>
-                                            <div>
-                                                <div className="font-black text-slate-800 text-xs">{p.name}</div>
-                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{p.wins} Wins</div>
-                                            </div>
-                                        </div>
-                                        <div className="font-black text-base text-slate-900 bg-white px-3 py-1 rounded-xl border border-slate-100">{p.points}</div>
+
+                            <div id="leaderboard-export" className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm p-4 sm:p-8">
+                                <div className="text-center mb-10">
+                                    <div className="inline-flex items-center justify-center p-3 bg-lime-400 rounded-2xl mb-4">
+                                        <Icon name="medal" className="w-8 h-8 text-slate-900" />
                                     </div>
-                                ))}
+                                    <h2 className="text-3xl font-black text-slate-900 uppercase italic tracking-tight">{sessionTitle}</h2>
+                                    <p className="text-slate-400 font-bold tracking-widest text-[10px] uppercase mt-1">{new Date(sessionDate).toLocaleDateString('ms-MY', { day: 'numeric', month: 'long', year: 'numeric' })} • Format {matchFormat === 'scramble' ? 'Individu (Scramble)' : 'Pasukan'}</p>
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead>
+                                            <tr className="text-[10px] font-black text-slate-400 uppercase border-b border-slate-100">
+                                                <th className="px-6 py-4">Pos</th>
+                                                <th className="px-6 py-4">Pemain</th>
+                                                <th className="px-6 py-4 text-center">Menang</th>
+                                                <th className="px-6 py-4 text-center">Kalah</th>
+                                                <th className="px-6 py-4 text-center">Mata</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {stats.players.map((p, i) => (
+                                                <tr key={i} className={`border-b border-slate-50 last:border-0 transition-colors ${i === 0 ? 'bg-yellow-50/50' : ''}`}>
+                                                    <td className="px-6 py-5">
+                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${i === 0 ? 'bg-yellow-400 text-white shadow-lg shadow-yellow-200' : i === 1 ? 'bg-slate-200 text-slate-500' : i === 2 ? 'bg-orange-100 text-orange-600' : 'bg-slate-50 text-slate-400'}`}>
+                                                            {i === 0 ? <Icon name="crown" className="w-4 h-4" /> : i+1}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-5">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`font-black uppercase tracking-tight text-sm ${i === 0 ? 'text-yellow-700' : 'text-slate-700'}`}>{p.name}</span>
+                                                            {i === 0 && <span className="text-yellow-500 animate-pulse text-lg">🌟</span>}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-5 text-center">
+                                                        <span className="bg-lime-100 text-lime-700 px-3 py-1 rounded-full text-[10px] font-black">{p.wins}W</span>
+                                                    </td>
+                                                    <td className="px-6 py-5 text-center">
+                                                        <span className="bg-red-50 text-red-400 px-3 py-1 rounded-full text-[10px] font-black">{p.losses}L</span>
+                                                    </td>
+                                                    <td className="px-6 py-5 text-center font-black text-lg text-slate-900">
+                                                        {p.points}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div className="mt-12 grid grid-cols-3 gap-4 border-t border-slate-100 pt-8">
+                                    {stats.players.slice(0, 3).map((p, i) => (
+                                        <div key={i} className="text-center p-4 rounded-3xl bg-slate-50 border border-slate-100">
+                                            <div className="text-[10px] font-black text-slate-400 uppercase mb-1">{i === 0 ? 'Juara' : i === 1 ? 'Naib Juara' : 'Ketiga'}</div>
+                                            <div className={`font-black uppercase text-sm ${i === 0 ? 'text-yellow-600' : 'text-slate-700'}`}>{p.name}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="text-center mt-8 text-[8px] font-bold text-slate-300 uppercase tracking-widest italic">
+                                    Pickleball Pro-Maker by <a href="https://wa.me/60135792215" target="_blank" className="underline decoration-dotted">Pahan</a>
+                                </div>
                             </div>
                         </div>
                     )}
