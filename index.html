@@ -88,7 +88,7 @@
 
                     finalTeams.forEach((t, i) => tStats[i] = { name: t.name, points: 0 });
                     Object.entries(scores).forEach(([idx, data]) => {
-                        if (!data.confirmed) return; // Hanya kira yang sudah disahkan
+                        if (!data.confirmed) return; 
                         const m = schedule[idx];
                         if (!m) return;
                         if (data.home > data.away) tStats[m.home].points += 2;
@@ -101,7 +101,7 @@
                         [m.p1, m.p2, m.p3, m.p4].forEach(p => { if(!pStats[p]) pStats[p] = { points: 0 }; });
                     });
                     Object.entries(scores).forEach(([idx, data]) => {
-                        if (!data.confirmed) return; // Hanya kira yang sudah disahkan
+                        if (!data.confirmed) return; 
                         const m = schedule[idx];
                         if (!m) return;
                         if (data.home > data.away) [m.p1, m.p2].forEach(p => pStats[p].points += 2);
@@ -135,6 +135,9 @@
             const [sessionLocation, setSessionLocation] = useState('Paragon Pickleball Center Miri');
             const [matchFormat, setMatchFormat] = useState('team');
             
+            // State for filtering
+            const [historyFilterDate, setHistoryFilterDate] = useState('');
+
             const [startTime, setStartTime] = useState("19:00");
             const [matchDuration, setMatchDuration] = useState(20);
             const [numCourts, setNumCourts] = useState(1);
@@ -186,6 +189,16 @@
                     setSessions(data.sort((a, b) => new Date(b.date) - new Date(a.date)));
                 });
             }, [user]);
+
+            // Logic to filter sessions for the history list
+            const displayedSessions = useMemo(() => {
+                let list = [...sessions];
+                if (historyFilterDate) {
+                    return list.filter(s => s.date === historyFilterDate);
+                }
+                // Show 10 latest if no date filter is applied
+                return list.slice(0, 10);
+            }, [sessions, historyFilterDate]);
 
             useEffect(() => {
                 if (!user || !currentSessionId) return;
@@ -356,7 +369,7 @@
             };
 
             const updateScore = (matchIdx, side, value) => {
-                if (scores[matchIdx]?.confirmed) return; // Tidak boleh ubah jika sudah sah
+                if (scores[matchIdx]?.confirmed) return; 
                 const val = value === '' ? 0 : parseInt(value);
                 const newScores = { ...scores, [matchIdx]: { ...scores[matchIdx], [side]: val, completed: true } };
                 setScores(newScores);
@@ -379,7 +392,7 @@
                         t.members.forEach(p => pStats[p] = { points: 0, wins: 0, losses: 0 });
                     });
                     Object.entries(scores).forEach(([idx, data]) => {
-                        if (!data.completed || !data.confirmed || !schedule[idx]) return; // Hanya kira jika confirmed
+                        if (!data.completed || !data.confirmed || !schedule[idx]) return; 
                         const m = schedule[idx];
                         if (data.home > data.away) {
                             tStats[m.home].points += 2; tStats[m.home].wins += 1;
@@ -390,13 +403,13 @@
                             tStats[m.away].points += 2; tStats[m.away].wins += 1;
                             tStats[m.away].members.forEach(p => { if(pStats[p]) { pStats[p].points += 2; pStats[p].wins += 1; } });
                             tStats[m.home].losses += 1;
-                            tStats[m.home].members.forEach(p => { if(pStats[p]) pStats[p].losses += 1; });
+                            tStats[m.home].members.forEach(p => { if(pStats[p]) { pStats[p].losses += 1; } });
                         }
                     });
                 } else {
                     schedule.forEach(m => { [m.p1, m.p2, m.p3, m.p4].forEach(p => { if(!pStats[p]) pStats[p] = { points: 0, wins: 0, losses: 0 }; }); });
                     Object.entries(scores).forEach(([idx, data]) => {
-                        if (!data.completed || !data.confirmed || !schedule[idx]) return; // Hanya kira jika confirmed
+                        if (!data.completed || !data.confirmed || !schedule[idx]) return; 
                         const m = schedule[idx];
                         if (data.home > data.away) {
                             [m.p1, m.p2].forEach(p => { pStats[p].points += 2; pStats[p].wins += 1; });
@@ -436,8 +449,8 @@
 
             if (view === 'menu') {
                 return (
-                    <div className="min-h-screen p-4 md:p-8 max-w-2xl mx-auto animate-in fade-in duration-500">
-                        <header className="text-center mb-10">
+                    <div className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto animate-in fade-in duration-500">
+                        <header className="text-center mb-12">
                             <div className="inline-flex items-center justify-center p-4 bg-lime-400 rounded-3xl mb-4 shadow-xl">
                                 <Icon name="trophy" className="w-10 h-10 text-slate-900" />
                             </div>
@@ -447,82 +460,122 @@
                             </p>
                         </header>
 
-                        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 mb-6">
-                            <h2 className="font-bold mb-4 flex items-center gap-2 text-lime-600"><Icon name="plus" /> Sesi Baru</h2>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Nama Kejohanan</label>
-                                    <div className="flex gap-2">
-                                        <input type="text" value={sessionTitle} onChange={e => setSessionTitle(e.target.value)} placeholder="cth: Piala Merdeka..." className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" />
-                                        <button onClick={randomizeTrophy} className="bg-slate-100 text-slate-500 p-3 rounded-xl hover:bg-slate-200 transition-colors"><Icon name="refresh-cw" /></button>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Lokasi</label>
-                                    <input type="text" value={sessionLocation} onChange={e => setSessionLocation(e.target.value)} placeholder="cth: Paragon Pickleball Center..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Format Perlawanan</label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button onClick={() => setMatchFormat('team')} className={`p-4 rounded-xl border-2 flex flex-col items-center gap-1 transition-all ${matchFormat === 'team' ? 'border-blue-500 bg-blue-50' : 'border-slate-100'}`}>
-                                            <Icon name="users" className={matchFormat === 'team' ? 'text-blue-600' : 'text-slate-300'} />
-                                            <span className={`text-[10px] font-black uppercase ${matchFormat === 'team' ? 'text-blue-700' : 'text-slate-400'}`}>Pasukan (Official)</span>
-                                        </button>
-                                        <button onClick={() => setMatchFormat('scramble')} className={`p-4 rounded-xl border-2 flex flex-col items-center gap-1 transition-all ${matchFormat === 'scramble' ? 'border-orange-500 bg-orange-50' : 'border-slate-100'}`}>
-                                            <Icon name="refresh-ccw" className={matchFormat === 'scramble' ? 'text-orange-600' : 'text-slate-300'} />
-                                            <span className={`text-[10px] font-black uppercase ${matchFormat === 'scramble' ? 'text-orange-700' : 'text-slate-400'}`}>Individu (Scramble)</span>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
+                            {/* KIRI: Sesi Baru */}
+                            <div className="bg-white p-8 rounded-[32px] shadow-sm border border-slate-200">
+                                <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-lime-600 uppercase tracking-tight italic">
+                                    <Icon name="plus-circle" /> Bina Sesi Baru
+                                </h2>
+                                <div className="space-y-5">
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Tarikh</label>
-                                        <input type="date" value={sessionDate} onChange={e => setSessionDate(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none" />
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Nama Kejohanan</label>
+                                        <div className="flex gap-2">
+                                            <input type="text" value={sessionTitle} onChange={e => setSessionTitle(e.target.value)} placeholder="cth: Piala Merdeka..." className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" />
+                                            <button onClick={randomizeTrophy} className="bg-slate-100 text-slate-500 p-3 rounded-xl hover:bg-slate-200 transition-colors"><Icon name="refresh-cw" /></button>
+                                        </div>
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Masa Mula</label>
-                                        <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none" />
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Lokasi</label>
+                                        <input type="text" value={sessionLocation} onChange={e => setSessionLocation(e.target.value)} placeholder="cth: Paragon Pickleball Center..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-lime-500" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Format Perlawanan</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button onClick={() => setMatchFormat('team')} className={`p-4 rounded-xl border-2 flex flex-col items-center gap-1 transition-all ${matchFormat === 'team' ? 'border-blue-500 bg-blue-50' : 'border-slate-100 bg-slate-50/50'}`}>
+                                                <Icon name="users" className={matchFormat === 'team' ? 'text-blue-600' : 'text-slate-300'} />
+                                                <span className={`text-[10px] font-black uppercase ${matchFormat === 'team' ? 'text-blue-700' : 'text-slate-400'}`}>Pasukan (Official)</span>
+                                            </button>
+                                            <button onClick={() => setMatchFormat('scramble')} className={`p-4 rounded-xl border-2 flex flex-col items-center gap-1 transition-all ${matchFormat === 'scramble' ? 'border-orange-500 bg-orange-50' : 'border-slate-100 bg-slate-50/50'}`}>
+                                                <Icon name="refresh-ccw" className={matchFormat === 'scramble' ? 'text-orange-600' : 'text-slate-300'} />
+                                                <span className={`text-[10px] font-black uppercase ${matchFormat === 'scramble' ? 'text-orange-700' : 'text-slate-400'}`}>Individu (Scramble)</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Tarikh</label>
+                                            <input type="date" value={sessionDate} onChange={e => setSessionDate(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none" />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Masa Mula</label>
+                                            <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none" />
+                                        </div>
+                                    </div>
+                                    <button onClick={createNewSession} disabled={isSaving} className="w-full bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-lg hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 active:scale-95 tracking-tight uppercase italic mt-2">
+                                        {isSaving ? "Sedang Bina..." : "Mula Sesi Sekarang"}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* KANAN: Rekod Sesi Terdahulu */}
+                            <div className="space-y-6">
+                                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 px-2">
+                                    <div>
+                                        <h2 className="text-xl font-black flex items-center gap-2 text-slate-800 uppercase tracking-tight italic">
+                                            <Icon name="history" /> Rekod Sesi {historyFilterDate ? '' : '(10 Terkini)'}
+                                        </h2>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                            {historyFilterDate ? `Keputusan pada ${new Date(historyFilterDate).toLocaleDateString('ms-MY')}` : 'Memaparkan perlawanan paling baru'}
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Carian Tarikh</label>
+                                        <div className="flex gap-1">
+                                            <input 
+                                                type="date" 
+                                                value={historyFilterDate} 
+                                                onChange={e => setHistoryFilterDate(e.target.value)} 
+                                                className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-lime-500"
+                                            />
+                                            {historyFilterDate && (
+                                                <button onClick={() => setHistoryFilterDate('')} className="bg-slate-100 text-slate-400 p-2 rounded-xl hover:bg-slate-200">
+                                                    <Icon name="x" className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                                <button onClick={createNewSession} disabled={isSaving} className="w-full bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-lg hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 active:scale-95 tracking-tight uppercase italic">
-                                    {isSaving ? "Sedang Bina..." : "Mula Sesi Sekarang"}
-                                </button>
+
+                                <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                                    {displayedSessions.length === 0 ? (
+                                        <div className="text-center py-20 bg-white rounded-[32px] border border-dashed border-slate-200">
+                                            <Icon name="search-x" className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                                            <p className="text-sm font-bold text-slate-400 italic">Tiada rekod ditemui</p>
+                                        </div>
+                                    ) : (
+                                        displayedSessions.map(s => (
+                                            <div key={s.id} className="group relative">
+                                                <button onClick={() => { setCurrentSessionId(s.id); setView('active'); }} className="w-full flex items-center justify-between p-5 bg-white rounded-2xl border border-slate-100 hover:border-lime-400 hover:shadow-md transition-all">
+                                                    <div className="flex items-start gap-4 text-left">
+                                                        <div className="w-12 h-12 bg-slate-50 rounded-xl flex flex-col items-center justify-center font-black group-hover:bg-lime-50 transition-colors shrink-0">
+                                                            <Icon name={s.matchFormat === 'team' ? 'users' : 'user'} className={`w-5 h-5 ${s.matchFormat === 'team' ? 'text-blue-400' : 'text-orange-400'}`} />
+                                                            <span className="text-[8px] mt-0.5 text-slate-400 font-bold uppercase tracking-tighter">{s.matchFormat === 'team' ? 'Team' : 'Scrmb'}</span>
+                                                        </div>
+                                                        <div className="flex-1 overflow-hidden">
+                                                            <div className="font-bold text-slate-800 line-clamp-1 truncate">{s.title || "Sesi Tanpa Nama"}</div>
+                                                            <div className="text-[10px] text-slate-500 font-bold flex items-center gap-1.5 mb-0.5">
+                                                                <Icon name="map-pin" className="w-3 h-3 text-slate-300" /> {s.location || "Paragon Pickleball Center Miri"}
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight flex items-center gap-2">
+                                                                <span className="flex items-center gap-1"><Icon name="calendar" className="w-2.5 h-2.5" /> {new Date(s.date).toLocaleDateString('ms-MY', { month: 'short', day: 'numeric' })}</span>
+                                                                <span>•</span>
+                                                                <span>{s.isGenerated ? "Selesai" : "Draf"}</span>
+                                                            </div>
+                                                            <SessionWinnerSummary session={s} />
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <button onClick={(e) => { e.stopPropagation(); setSessionToDelete(s.id); }} className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Icon name="trash-2" /></button>
+                                                        <Icon name="chevron-right" className="text-slate-300 group-hover:text-lime-500" />
+                                                    </div>
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
                             </div>
                         </div>
 
-                        <div className="space-y-3">
-                            <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest px-2 flex items-center gap-2">
-                                <Icon name="history" className="w-4 h-4" /> Rekod Sesi Terdahulu
-                            </h2>
-                            {sessions.map(s => (
-                                <div key={s.id} className="group relative">
-                                    <button onClick={() => { setCurrentSessionId(s.id); setView('active'); }} className="w-full flex items-center justify-between p-5 bg-white rounded-2xl border border-slate-100 hover:border-lime-400 hover:shadow-md transition-all">
-                                        <div className="flex items-start gap-4 text-left">
-                                            <div className="w-12 h-12 bg-slate-50 rounded-xl flex flex-col items-center justify-center font-black group-hover:bg-lime-50 transition-colors">
-                                                <Icon name={s.matchFormat === 'team' ? 'users' : 'user'} className={`w-5 h-5 ${s.matchFormat === 'team' ? 'text-blue-400' : 'text-orange-400'}`} />
-                                                <span className="text-[8px] mt-0.5 text-slate-400 font-bold uppercase tracking-tighter">{s.matchFormat === 'team' ? 'Team' : 'Scrmb'}</span>
-                                            </div>
-                                            <div className="flex-1 overflow-hidden">
-                                                <div className="font-bold text-slate-800 line-clamp-1 truncate">{s.title || "Sesi Tanpa Nama"}</div>
-                                                <div className="text-[10px] text-slate-500 font-bold flex items-center gap-1.5 mb-0.5">
-                                                    <Icon name="map-pin" className="w-3 h-3 text-slate-300" /> {s.location || "Paragon Pickleball Center Miri"}
-                                                </div>
-                                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight flex items-center gap-2">
-                                                    <span className="flex items-center gap-1"><Icon name="calendar" className="w-2.5 h-2.5" /> {new Date(s.date).toLocaleDateString('ms-MY', { month: 'short', day: 'numeric' })}</span>
-                                                    <span>•</span>
-                                                    <span>{s.isGenerated ? "Selesai" : "Draf"}</span>
-                                                </div>
-                                                <SessionWinnerSummary session={s} />
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <button onClick={(e) => { e.stopPropagation(); setSessionToDelete(s.id); }} className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Icon name="trash-2" /></button>
-                                            <Icon name="chevron-right" className="text-slate-300 group-hover:text-lime-500" />
-                                        </div>
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
                         {sessionToDelete && (
                             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                                 <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl">
